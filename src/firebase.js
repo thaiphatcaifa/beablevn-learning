@@ -2,22 +2,23 @@ import { initializeApp } from "firebase/app";
 import { getDatabase } from "firebase/database";
 import { getAuth } from "firebase/auth";
 
-// Sử dụng biến môi trường từ Vite (import.meta.env)
+// Cấu hình trực tiếp (Không dùng .env)
 export const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  databaseURL: import.meta.env.VITE_FIREBASE_DB_URL, // Dòng này sẽ tự lấy URL mới từ file .env
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+  apiKey: "AIzaSyDib-AzfVlINhKd-EiiFhZq1PQwPCMMrBw",
+  authDomain: "beablevn-learning.firebaseapp.com",
+  // QUAN TRỌNG: URL này đã được sửa thành 'bavn-learning' thay vì 'beablevn-learning' để khớp với database thực tế
+  databaseURL: "https://bavn-learning-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "beablevn-learning",
+  storageBucket: "beablevn-learning.firebasestorage.app",
+  messagingSenderId: "929043730121",
+  appId: "1:929043730121:web:3f95e39b6bfe93d2f2c718",
+  measurementId: "G-8TL2GYB1L8"
 };
 
 // 1. Khởi tạo App
 const app = initializeApp(firebaseConfig);
 
-// 2. Khởi tạo Database (QUAN TRỌNG: Phải truyền URL vào đây)
+// 2. Khởi tạo Database (Truyền URL cấu hình vào để đảm bảo kết nối đúng)
 export const db = getDatabase(app, firebaseConfig.databaseURL);
 
 // 3. Khởi tạo Auth
