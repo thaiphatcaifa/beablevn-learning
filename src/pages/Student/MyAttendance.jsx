@@ -1,35 +1,57 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { db } from '../../firebase';
+import { ref, onValue } from "firebase/database";
 
 const MyAttendance = () => {
-  // Demo link check-out
-  const checkOutLink = "https://forms.google.com/example-checkout"; 
+  const { userData } = useAuth();
+  const [history, setHistory] = useState([]);
+
+  useEffect(() => {
+    onValue(ref(db, 'attendance'), (snap) => {
+      const data = snap.val();
+      if (data && userData) {
+        let myHistory = [];
+        Object.keys(data).forEach(classId => {
+           Object.keys(data[classId]).forEach(date => {
+              const status = data[classId][date][userData.uid];
+              if (status) myHistory.push({ date, status });
+           });
+        });
+        myHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
+        setHistory(myHistory);
+      }
+    });
+  }, [userData]);
+
+  const getStatusLabel = (s) => {
+    switch(s) {
+      case 'present': return <span className="inline-flex items-center gap-1 text-green-700 bg-green-50 px-2 py-1 rounded text-xs font-bold border border-green-200">✅ Đi học đúng giờ</span>;
+      case 'late': return <span className="inline-flex items-center gap-1 text-orange-700 bg-orange-50 px-2 py-1 rounded text-xs font-bold border border-orange-200">⚠️ Đi học trễ</span>;
+      case 'excused': return <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-1 rounded text-xs font-bold border border-blue-200">📩 Vắng có phép</span>;
+      case 'absent': return <span className="inline-flex items-center gap-1 text-red-700 bg-red-50 px-2 py-1 rounded text-xs font-bold border border-red-200">❌ Vắng không phép</span>;
+      default: return s;
+    }
+  };
 
   return (
-    <div className="bg-white p-6 rounded shadow">
-      <h2 className="text-xl font-bold mb-4">Thẻ Quá trình (Điểm danh)</h2>
-      
-      <div className="p-4 bg-yellow-50 border border-yellow-200 rounded mb-6">
-        <h3 className="font-bold text-yellow-800 mb-2">Check-out cuối giờ</h3>
-        <p className="text-sm mb-3">Vui lòng bấm vào link dưới đây để xác nhận hoàn thành buổi học:</p>
-        <a href={checkOutLink} target="_blank" rel="noreferrer" className="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700 inline-block">
-          🔗 Link Check-out
-        </a>
-      </div>
-
-      <h3 className="font-bold mb-3">Lịch sử chuyên cần</h3>
-      <div className="overflow-hidden rounded border">
-        <table className="w-full text-left">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="p-3">Ngày</th>
-              <th className="p-3">Trạng thái</th>
-            </tr>
+    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+      <h2 className="text-xl font-bold mb-6 text-[#003366] flex items-center gap-2">
+         <span className="text-2xl">📅</span> Lịch sử Chuyên cần
+      </h2>
+      <div className="overflow-hidden rounded-xl border border-gray-200">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-[#f0f9ff] text-[#003366] uppercase font-bold text-xs">
+             <tr><th className="p-4">Ngày</th><th className="p-4">Trạng thái</th></tr>
           </thead>
-          <tbody>
-            <tr className="border-b"><td className="p-3">20/10/2023</td><td className="p-3 text-green-600 font-bold">Có mặt</td></tr>
-            <tr className="border-b"><td className="p-3">22/10/2023</td><td className="p-3 text-green-600 font-bold">Có mặt</td></tr>
-            <tr className="border-b"><td className="p-3">24/10/2023</td><td className="p-3 text-red-500 font-bold">Vắng (Có phép)</td></tr>
+          <tbody className="divide-y divide-gray-100">
+            {history.map((h, i) => (
+              <tr key={i} className="hover:bg-gray-50 transition-colors">
+                <td className="p-4 font-medium text-gray-800">{new Date(h.date).toLocaleDateString('vi-VN')}</td>
+                <td className="p-4">{getStatusLabel(h.status)}</td>
+              </tr>
+            ))}
+            {history.length === 0 && <tr><td colSpan="2" className="p-8 text-center text-gray-400 italic">Chưa có dữ liệu điểm danh.</td></tr>}
           </tbody>
         </table>
       </div>
