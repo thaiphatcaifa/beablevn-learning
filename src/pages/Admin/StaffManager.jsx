@@ -5,12 +5,9 @@ import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 
 const StaffManager = () => {
-  const [formData, setFormData] = useState({ 
-    name: '', email: '', password: '', subRole: 'teacher', assignedClasses: [] 
-  });
+  const [formData, setFormData] = useState({ name: '', email: '', password: '', subRole: 'teacher', assignedClasses: [] });
   const [staffList, setStaffList] = useState([]);
   const [availableClasses, setAvailableClasses] = useState([]);
-  // State cho việc điều chỉnh lớp
   const [editingStaff, setEditingStaff] = useState(null);
 
   useEffect(() => {
@@ -24,137 +21,91 @@ const StaffManager = () => {
   const handleClassToggle = (classId) => {
     const current = editingStaff ? (editingStaff.assignedClasses || []) : formData.assignedClasses;
     const newClasses = current.includes(classId) ? current.filter(id => id !== classId) : [...current, classId];
-    
-    if (editingStaff) {
-      setEditingStaff({ ...editingStaff, assignedClasses: newClasses });
-    } else {
-      setFormData({ ...formData, assignedClasses: newClasses });
-    }
+    editingStaff ? setEditingStaff({ ...editingStaff, assignedClasses: newClasses }) : setFormData({ ...formData, assignedClasses: newClasses });
   };
 
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!formData.name || !formData.email || !formData.password) return alert("Thiếu thông tin!");
-    
-    // Giữ nguyên logic tạo Secondary App để tạo user
     const secondaryApp = initializeApp(firebaseConfig, "StaffApp-" + Date.now());
     try {
       const auth = getAuth(secondaryApp);
       const cred = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
       await set(ref(db, 'users/' + cred.user.uid), { ...formData, role: 'staff', createdAt: new Date().toISOString() });
       await signOut(auth);
-      alert(`Đã tạo nhân sự: ${formData.email}`);
+      alert(`Đã tạo: ${formData.email}`);
       setFormData({ name: '', email: '', password: '', subRole: 'teacher', assignedClasses: [] });
     } catch (error) { alert("Lỗi: " + error.message); }
     finally { deleteApp(secondaryApp); }
   };
 
-  const handleUpdateClasses = () => {
-    if (!editingStaff) return;
-    update(ref(db, `users/${editingStaff.id}`), { assignedClasses: editingStaff.assignedClasses });
-    setEditingStaff(null);
-    alert("Đã cập nhật lớp phụ trách!");
-  };
-
-  const handleDelete = async (staffId) => {
-    // Cảnh báo vấn đề Email đã tồn tại
-    if (window.confirm("LƯU Ý QUAN TRỌNG: Hành động này chỉ xóa dữ liệu trong Danh sách. Tài khoản đăng nhập (Email) vẫn tồn tại trên hệ thống Google/Firebase. Bạn sẽ KHÔNG THỂ tạo lại nhân sự mới với email này trừ khi liên hệ Admin hệ thống để xóa Auth. Bạn có chắc chắn?")) {
-      await remove(ref(db, `users/${staffId}`));
-    }
-  };
-
-  const getClassNames = (ids) => (!ids || !ids.length) ? <span className="text-gray-400 italic">Chưa gán</span> : ids.map(id => availableClasses.find(c => c.id === id)?.name || id).join(", ");
+  const handleDelete = async (id) => { if (window.confirm("Xóa nhân sự này? (Auth vẫn tồn tại)")) await remove(ref(db, `users/${id}`)); };
+  const getClassNames = (ids) => (!ids || !ids.length) ? <span className="text-slate-300 italic">--</span> : ids.map(id => availableClasses.find(c => c.id === id)?.name || id).join(", ");
 
   return (
     <div className="space-y-6">
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-        <h2 className="text-xl font-bold mb-6 text-[#003366] border-b border-gray-50 pb-4 flex items-center gap-2">
-          <span className="text-2xl">👤</span> Tạo Tài khoản Nhân sự
-        </h2>
-        <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-4">
-             <input className="w-full border p-3 rounded-lg text-sm focus:ring-2 focus:ring-[#003366] outline-none" placeholder="Họ và Tên" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-             <div className="grid grid-cols-2 gap-3">
-               <input className="w-full border p-3 rounded-lg text-sm focus:ring-2 focus:ring-[#003366] outline-none" placeholder="Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
-               <input className="w-full border p-3 rounded-lg text-sm focus:ring-2 focus:ring-[#003366] outline-none" placeholder="Mật khẩu" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
-             </div>
-             <select className="w-full border p-3 rounded-lg text-sm bg-white focus:ring-2 focus:ring-[#003366] outline-none" value={formData.subRole} onChange={e => setFormData({...formData, subRole: e.target.value})}>
-                <option value="teacher">Giáo viên</option>
-                <option value="cco">CCO</option>
-                <option value="cca">CCA</option> {/* Thêm CCA */}
-             </select>
+      <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm">
+        <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-4">
+           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#003366" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3.75 15a2.25 2.25 0 012.25-2.25h2.93a2.625 2.625 0 011.603.543c.47.372.673.855.567 1.348l-.053.25c-.29.988-1.2 1.609-2.227 1.609H6.262c-1.026 0-1.936-.621-2.226-1.61l-.054-.25a1.884 1.884 0 01.568-1.348z" /></svg>
+           <h2 className="text-lg font-bold text-[#003366]">Tạo Nhân sự Mới</h2>
+        </div>
+        <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input className="border border-slate-200 p-3 rounded-lg text-sm outline-none focus:border-[#003366]" placeholder="Họ tên" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+          <div className="flex gap-2">
+             <input className="border border-slate-200 p-3 rounded-lg w-1/2 text-sm outline-none focus:border-[#003366]" placeholder="Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+             <input className="border border-slate-200 p-3 rounded-lg w-1/2 text-sm outline-none focus:border-[#003366]" placeholder="Mật khẩu" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
           </div>
-          <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-             <label className="block text-xs font-bold mb-3 text-[#003366] uppercase tracking-wide">Gán lớp (Tạo mới):</label>
-             <div className="max-h-40 overflow-y-auto space-y-2 custom-scrollbar pr-2">
-                {availableClasses.map((cls) => (
-                  <label key={cls.id} className="flex items-center space-x-3 p-2 bg-white rounded border border-gray-100 hover:border-blue-200 cursor-pointer transition-colors">
-                    <input type="checkbox" className="accent-[#003366] w-4 h-4" checked={formData.assignedClasses.includes(cls.id)} onChange={() => handleClassToggle(cls.id)} />
-                    <span className="text-sm text-gray-700">{cls.name}</span>
-                  </label>
-                ))}
-             </div>
+          <select className="border border-slate-200 p-3 rounded-lg text-sm outline-none focus:border-[#003366] bg-white" value={formData.subRole} onChange={e => setFormData({...formData, subRole: e.target.value})}>
+             <option value="teacher">Giáo viên</option><option value="cco">CCO</option><option value="cca">CCA</option>
+          </select>
+          <div className="bg-slate-50 p-4 rounded-lg h-32 overflow-y-auto border border-slate-200">
+             <p className="text-xs font-bold text-[#003366] mb-2 uppercase tracking-wide">Gán lớp:</p>
+             {availableClasses.map(c => (
+               <label key={c.id} className="flex items-center gap-2 text-sm mb-1 cursor-pointer"><input type="checkbox" className="accent-[#003366] w-4 h-4" checked={formData.assignedClasses.includes(c.id)} onChange={() => handleClassToggle(c.id)} /> {c.name}</label>
+             ))}
           </div>
-          <button className="md:col-span-2 bg-[#003366] text-white font-bold py-3 rounded-xl hover:bg-[#002244] shadow-md transition-all">
-            + Khởi tạo Tài khoản
-          </button>
+          <button className="md:col-span-2 bg-[#003366] text-white py-3 rounded-lg font-bold shadow-sm hover:bg-[#002244] transition-all">Tạo Tài khoản</button>
         </form>
       </div>
 
-      {/* Modal Điều chỉnh */}
       {editingStaff && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl animate-fade-in-up">
-            <h3 className="font-bold text-lg mb-4 text-[#003366] border-b pb-2">Điều chỉnh lớp: {editingStaff.name}</h3>
-            <div className="max-h-60 overflow-y-auto space-y-2 mb-6 bg-gray-50 p-3 rounded border border-gray-200">
+            <h3 className="font-bold text-lg mb-4 text-[#003366]">Điều chỉnh lớp</h3>
+            <div className="max-h-60 overflow-y-auto space-y-2 mb-4 bg-slate-50 p-3 rounded border border-slate-200">
                {availableClasses.map((cls) => (
-                  <label key={cls.id} className="flex items-center space-x-3 p-2 bg-white rounded border border-gray-100 cursor-pointer hover:bg-blue-50">
-                    <input type="checkbox" className="accent-[#003366] w-4 h-4" checked={(editingStaff.assignedClasses || []).includes(cls.id)} onChange={() => handleClassToggle(cls.id)} />
-                    <span className="text-sm font-medium">{cls.name}</span>
+                  <label key={cls.id} className="flex items-center space-x-2 cursor-pointer text-sm p-1 hover:bg-slate-100 rounded">
+                    <input type="checkbox" className="accent-[#003366]" checked={(editingStaff.assignedClasses || []).includes(cls.id)} onChange={() => handleClassToggle(cls.id)} />
+                    <span>{cls.name}</span>
                   </label>
                 ))}
             </div>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setEditingStaff(null)} className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium">Hủy</button>
-              <button onClick={handleUpdateClasses} className="px-4 py-2 text-white bg-[#003366] rounded-lg hover:bg-[#002244] font-medium shadow-sm">Lưu Thay đổi</button>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setEditingStaff(null)} className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 font-medium">Hủy</button>
+              <button onClick={() => { update(ref(db, `users/${editingStaff.id}`), { assignedClasses: editingStaff.assignedClasses }); setEditingStaff(null); }} className="px-4 py-2 bg-[#003366] text-white rounded-lg text-sm font-bold hover:bg-[#002244] shadow-sm">Lưu</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Danh sách */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-         <h2 className="text-xl font-bold mb-6 text-[#003366] flex items-center gap-2">
-            <span className="text-2xl">📋</span> Danh sách Nhân sự
-         </h2>
-         <div className="overflow-x-auto">
+      <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+         <div className="flex items-center gap-2 mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#003366" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>
+            <h2 className="text-lg font-bold text-[#003366]">Danh sách Nhân sự</h2>
+         </div>
+         <div className="overflow-x-auto rounded-lg border border-slate-200">
             <table className="w-full text-left text-sm">
-                <thead className="bg-[#f0f9ff] text-[#003366] uppercase font-bold text-xs">
-                   <tr>
-                      <th className="p-4">Họ tên</th>
-                      <th className="p-4">Email</th>
-                      <th className="p-4">Chức vụ</th>
-                      <th className="p-4">Lớp Phụ Trách</th>
-                      <th className="p-4 text-right">Hành động</th>
-                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                   {staffList.map(s => (
-                      <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                         <td className="p-4 font-bold text-gray-800">{s.name}</td>
-                         <td className="p-4 text-gray-600">{s.email}</td>
-                         <td className="p-4"><span className="uppercase text-[10px] font-bold px-2 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-100">{s.subRole}</span></td>
-                         <td className="p-4">
-                            <div className="flex items-center justify-between gap-2">
-                               <span className="truncate max-w-[200px] text-gray-600" title={getClassNames(s.assignedClasses)}>{getClassNames(s.assignedClasses)}</span>
-                               <button onClick={() => setEditingStaff(s)} className="text-[#003366] border border-[#003366] text-[10px] font-bold px-2 py-1 rounded hover:bg-[#003366] hover:text-white transition-all whitespace-nowrap">Điều chỉnh</button>
-                            </div>
-                         </td>
-                         <td className="p-4 text-right">
-                            <button onClick={() => handleDelete(s.id)} className="text-red-500 hover:text-red-700 font-bold text-xs px-2 py-1 hover:bg-red-50 rounded transition-colors">Xóa</button>
-                         </td>
-                      </tr>
-                   ))}
+                <thead className="bg-slate-50 text-slate-500 border-b border-slate-200 text-xs uppercase font-bold"><tr><th className="p-4">Tên</th><th className="p-4">Email</th><th className="p-4">Vai trò</th><th className="p-4">Lớp</th><th className="p-4 text-right">Thao tác</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                {staffList.map(s => (
+                    <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-4 font-bold text-gray-800">{s.name}</td>
+                        <td className="p-4 text-slate-500">{s.email}</td>
+                        <td className="p-4 uppercase text-[10px] font-bold text-slate-400">{s.subRole}</td>
+                        <td className="p-4"><div className="flex items-center gap-2"><span className="truncate max-w-[150px] text-xs text-slate-600">{getClassNames(s.assignedClasses)}</span><button onClick={() => setEditingStaff(s)} className="text-[#003366] border border-[#003366] text-[10px] font-bold px-2 py-0.5 rounded hover:bg-[#003366] hover:text-white transition-all">Sửa</button></div></td>
+                        <td className="p-4 text-right"><button onClick={() => handleDelete(s.id)} className="text-red-500 hover:text-red-700 text-xs font-bold px-2">Xóa</button></td>
+                    </tr>
+                ))}
                 </tbody>
             </table>
          </div>

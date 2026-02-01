@@ -5,22 +5,22 @@ import { auth } from '../../firebase';
 
 const Icons = {
   Class: ({ active }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={active ? 2 : 1.5} stroke="currentColor" className="w-6 h-6">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.499 5.516 50.552 50.552 0 00-2.658.813m-15.482 0A50.55 50.55 0 0112 13.489a50.55 50.55 0 016.744-3.342" />
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke={active ? "#003366" : "#64748b"} className="w-5 h-5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
     </svg>
   ),
   Attendance: ({ active }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={active ? 2 : 1.5} stroke="currentColor" className="w-6 h-6">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke={active ? "#003366" : "#64748b"} className="w-5 h-5">
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   ),
   Scores: ({ active }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={active ? 2 : 1.5} stroke="currentColor" className="w-6 h-6">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke={active ? "#003366" : "#64748b"} className="w-5 h-5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
     </svg>
   ),
   Notifications: ({ active }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={active ? 2 : 1.5} stroke="currentColor" className="w-6 h-6">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke={active ? "#003366" : "#64748b"} className="w-5 h-5">
         <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
     </svg>
   ),
@@ -36,116 +36,78 @@ const StaffLayout = () => {
   const location = useLocation();
 
   if (!currentUser) return <Navigate to="/login" />;
-
   const isActive = (path) => location.pathname.includes(path);
 
-  // Style Sidebar Desktop
-  const linkClass = (path) => `
-    flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group
+  const sidebarLinkClass = (path) => `
+    flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium
     ${isActive(path) 
-      ? 'bg-[#e0f2fe] text-[#003366] font-bold shadow-sm' 
-      : 'text-gray-500 hover:bg-gray-50 hover:text-[#003366] font-medium'}
+      ? 'bg-blue-50 text-[#003366]' 
+      : 'text-slate-500 hover:bg-slate-50 hover:text-[#003366]'}
   `;
 
-  // Style Bottom Nav Mobile
   const mobileLinkClass = (path) => `
     flex flex-col items-center justify-center w-full h-full space-y-1
-    ${isActive(path) 
-      ? 'text-[#003366]' 
-      : 'text-gray-400 hover:text-gray-600'}
+    ${isActive(path) ? 'text-[#003366]' : 'text-slate-400'}
   `;
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-[#f3f4f6] font-sans">
+    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50 font-sans text-slate-800">
       
-      {/* --- DESKTOP SIDEBAR --- */}
-      <aside className="hidden md:flex w-64 bg-white border-r border-gray-200 flex-col fixed h-full z-50 shadow-sm">
-        {/* Header */}
-        <div className="p-6 border-b border-gray-100 flex flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <img src="/BA LOGO.png" alt="Logo" className="w-10 h-10 object-contain" />
-            <div>
-              <h1 className="text-[#003366] font-extrabold text-lg leading-none">Be Able VN</h1>
-              <span className="text-xs text-gray-400 font-medium tracking-wide">Staff Portal</span>
-            </div>
-          </div>
-          {/* User Info */}
-          <div className="flex items-center gap-3 px-3 py-2 bg-gray-50 rounded-lg border border-gray-100">
-            <div className="w-8 h-8 rounded-full bg-[#003366] text-white flex items-center justify-center font-bold text-xs">
-              {userData?.name?.charAt(0) || "S"}
-            </div>
-            <div className="overflow-hidden">
-              <div className="text-sm font-bold text-gray-700 truncate">{userData?.name || "Nhân viên"}</div>
-              <div className="text-[10px] text-gray-400 truncate">{userData?.email}</div>
-            </div>
+      {/* DESKTOP SIDEBAR */}
+      <aside className="hidden md:flex w-64 border-r border-slate-200 flex-col fixed h-full z-50 bg-white">
+        <div className="p-6 flex items-center gap-3">
+          <img src="/BA LOGO.png" alt="Logo" className="w-8 h-8 object-contain" />
+          <div>
+            <h1 className="text-[#003366] font-bold text-base">Be Able VN</h1>
+            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Staff Portal</span>
           </div>
         </div>
 
-        {/* Menu Desktop */}
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          <Link to="/staff/classes" className={linkClass('classes')}>
-            <Icons.Class active={isActive('classes')} /> <span>Lớp học</span>
-          </Link>
-          <Link to="/staff/attendance" className={linkClass('attendance')}>
-            <Icons.Attendance active={isActive('attendance')} /> <span>Điểm danh</span>
-          </Link>
-          <Link to="/staff/scores" className={linkClass('scores')}>
-            <Icons.Scores active={isActive('scores')} /> <span>Kết quả học tập</span>
-          </Link>
-          <Link to="/staff/notifications" className={linkClass('notifications')}>
-            <Icons.Notifications active={isActive('notifications')} /> <span>Thông báo</span>
-          </Link>
+        <div className="px-6 pb-6">
+           <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <div className="w-8 h-8 rounded-full bg-[#003366] text-white flex items-center justify-center text-xs font-bold">{userData?.name?.charAt(0)}</div>
+              <div className="overflow-hidden">
+                 <div className="text-sm font-bold text-slate-700 truncate">{userData?.name}</div>
+                 <div className="text-[10px] text-slate-400 uppercase font-semibold">{userData?.role}</div>
+              </div>
+           </div>
+        </div>
+
+        <nav className="flex-1 px-4 space-y-1">
+          <Link to="/staff/classes" className={sidebarLinkClass('classes')}><Icons.Class active={isActive('classes')} /> <span>Lớp học</span></Link>
+          <Link to="/staff/attendance" className={sidebarLinkClass('attendance')}><Icons.Attendance active={isActive('attendance')} /> <span>Điểm danh</span></Link>
+          <Link to="/staff/scores" className={sidebarLinkClass('scores')}><Icons.Scores active={isActive('scores')} /> <span>Kết quả</span></Link>
+          <Link to="/staff/notifications" className={sidebarLinkClass('notifications')}><Icons.Notifications active={isActive('notifications')} /> <span>Thông báo</span></Link>
         </nav>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-100">
-          <button onClick={() => auth.signOut()} className="w-full flex items-center justify-center gap-2 p-3 text-red-600 rounded-xl hover:bg-red-50 transition-all font-semibold text-sm group">
-            <Icons.Logout /> <span className="group-hover:translate-x-1 transition-transform">Đăng xuất</span>
+        <div className="p-4 border-t border-slate-100">
+          <button onClick={() => auth.signOut()} className="w-full flex items-center justify-center gap-2 p-2.5 text-red-500 hover:bg-red-50 rounded-lg text-sm font-medium">
+            <Icons.Logout /> <span>Thoát</span>
           </button>
         </div>
       </aside>
 
-      {/* --- MOBILE HEADER --- */}
-      <header className="md:hidden sticky top-0 z-40 bg-white border-b border-gray-200 px-4 h-16 flex items-center justify-between shadow-sm">
+      {/* MOBILE HEADER */}
+      <header className="md:hidden sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-slate-200 px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <img src="/BA LOGO.png" alt="Logo" className="w-8 h-8 object-contain" />
-          <div className="flex flex-col">
-            <span className="text-[#003366] font-extrabold text-base leading-none">Be Able VN</span>
-            <span className="text-xs text-gray-500">Staff Portal</span>
-          </div>
+          <img src="/BA LOGO.png" alt="Logo" className="w-7 h-7 object-contain" />
+          <span className="text-[#003366] font-bold text-sm">Staff Portal</span>
         </div>
-        <button onClick={() => auth.signOut()} className="text-xs font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-lg border border-red-100">
-          Thoát
-        </button>
+        <button onClick={() => auth.signOut()} className="p-2 text-slate-400 hover:text-red-500"><Icons.Logout /></button>
       </header>
 
-      {/* --- MAIN CONTENT --- */}
+      {/* MAIN CONTENT */}
       <main className="flex-1 md:ml-64 p-4 md:p-8 pb-24 md:pb-8 overflow-auto">
-        <div className="max-w-5xl mx-auto">
-          <Outlet />
-        </div>
+        <div className="max-w-5xl mx-auto"><Outlet /></div>
       </main>
 
-      {/* --- MOBILE BOTTOM NAV --- */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 h-16 flex justify-around items-center z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] pb-safe">
-        <Link to="/staff/classes" className={mobileLinkClass('classes')}>
-          <Icons.Class active={isActive('classes')} />
-          <span className="text-[10px] font-medium mt-0.5">Lớp học</span>
-        </Link>
-        <Link to="/staff/attendance" className={mobileLinkClass('attendance')}>
-          <Icons.Attendance active={isActive('attendance')} />
-          <span className="text-[10px] font-medium mt-0.5">Điểm danh</span>
-        </Link>
-        <Link to="/staff/scores" className={mobileLinkClass('scores')}>
-          <Icons.Scores active={isActive('scores')} />
-          <span className="text-[10px] font-medium mt-0.5">Kết quả</span>
-        </Link>
-        <Link to="/staff/notifications" className={mobileLinkClass('notifications')}>
-          <Icons.Notifications active={isActive('notifications')} />
-          <span className="text-[10px] font-medium mt-0.5">Thông báo</span>
-        </Link>
+      {/* MOBILE BOTTOM NAV */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 h-16 flex justify-around items-center z-50 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+        <Link to="/staff/classes" className={mobileLinkClass('classes')}><Icons.Class active={isActive('classes')} /><span className="text-[10px] font-medium">Lớp</span></Link>
+        <Link to="/staff/attendance" className={mobileLinkClass('attendance')}><Icons.Attendance active={isActive('attendance')} /><span className="text-[10px] font-medium">Đ.Danh</span></Link>
+        <Link to="/staff/scores" className={mobileLinkClass('scores')}><Icons.Scores active={isActive('scores')} /><span className="text-[10px] font-medium">Điểm</span></Link>
+        <Link to="/staff/notifications" className={mobileLinkClass('notifications')}><Icons.Notifications active={isActive('notifications')} /><span className="text-[10px] font-medium">Tin</span></Link>
       </nav>
-
     </div>
   );
 };
