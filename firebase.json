@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "target": "edu",
     "public": "dist",
     "ignore": [
       "firebase.json",
