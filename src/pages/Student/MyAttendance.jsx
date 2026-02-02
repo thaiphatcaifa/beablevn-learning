@@ -4,38 +4,41 @@ import { db } from '../../firebase';
 import { ref, onValue } from "firebase/database";
 
 const MyAttendance = () => {
-  const { userData } = useAuth();
-  const [stats, setStats] = useState({}); // Dữ liệu thống kê theo lớp
-  const [classesMap, setClassesMap] = useState({}); // Map id -> tên lớp
+  // Lấy currentUser để đảm bảo có uid chính xác
+  const { userData, currentUser } = useAuth();
+  const [stats, setStats] = useState({});
+  const [classesMap, setClassesMap] = useState({});
 
   useEffect(() => {
-    // 1. Lấy danh sách lớp để hiển thị tên
-    onValue(ref(db, 'classes'), (snap) => {
+    // 1. Lấy danh sách lớp để map tên lớp
+    const unsubClasses = onValue(ref(db, 'classes'), (snap) => {
       const data = snap.val();
       if (data) {
         setClassesMap(data);
       }
     });
 
-    // 2. Lấy dữ liệu điểm danh và tính toán thống kê
-    onValue(ref(db, 'attendance'), (snap) => {
+    // 2. Lấy dữ liệu điểm danh
+    const unsubAttendance = onValue(ref(db, 'attendance'), (snap) => {
       const data = snap.val();
-      if (data && userData) {
+      // Chỉ chạy khi có dữ liệu và có currentUser
+      if (data && currentUser) {
         let myStats = {};
 
-        // Duyệt qua từng lớp có trong dữ liệu điểm danh
+        // Duyệt qua từng lớp (classId)
         Object.keys(data).forEach(classId => {
-           // Khởi tạo bộ đếm cho lớp nếu chưa có
+           // Khởi tạo bộ đếm cho lớp này
            if (!myStats[classId]) {
              myStats[classId] = { present: 0, late: 0, excused: 0, absent: 0 };
            }
 
-           // Duyệt qua từng ngày của lớp đó
+           // Duyệt qua từng ngày (date)
            Object.keys(data[classId]).forEach(date => {
-              // Kiểm tra xem user hiện tại có trạng thái trong ngày đó không
-              const status = data[classId][date][userData.uid];
+              // Lấy trạng thái của học viên hiện tại (sử dụng currentUser.uid)
+              const status = data[classId][date][currentUser.uid];
+              
               if (status) {
-                 // Cộng dồn vào thống kê
+                 // Cộng dồn vào thống kê nếu trạng thái hợp lệ
                  if (myStats[classId][status] !== undefined) {
                    myStats[classId][status]++;
                  }
@@ -46,7 +49,13 @@ const MyAttendance = () => {
         setStats(myStats);
       }
     });
-  }, [userData]);
+
+    // Cleanup function để hủy lắng nghe khi component unmount
+    return () => {
+      unsubClasses();
+      unsubAttendance();
+    };
+  }, [currentUser]); // Chạy lại khi currentUser thay đổi
 
   return (
     <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm">
@@ -58,51 +67,51 @@ const MyAttendance = () => {
       </h2>
       
       {Object.keys(stats).length === 0 ? (
-        <div className="text-center py-8">
-           <div className="text-4xl mb-2 grayscale opacity-30">📊</div>
-           <p className="text-slate-400 italic text-sm">Chưa có dữ liệu điểm danh.</p>
+        <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-xl">
+           <div className="text-4xl mb-3 grayscale opacity-20">📊</div>
+           <p className="text-slate-400 text-sm font-medium">Chưa có dữ liệu điểm danh nào.</p>
         </div>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-6">
           {Object.entries(stats).map(([classId, count]) => (
-            <div key={classId} className="border border-slate-100 rounded-xl p-4 bg-slate-50/50">
-              <h3 className="font-bold text-[#003366] mb-4 text-sm flex items-center gap-2 border-b border-slate-200 pb-2">
+            <div key={classId} className="bg-slate-50 rounded-xl p-5 border border-slate-100">
+              <h3 className="font-bold text-[#003366] mb-4 text-sm flex items-center gap-2 pb-3 border-b border-slate-200/60">
                 <span className="w-2 h-2 rounded-full bg-[#003366]"></span>
-                Lớp: {classesMap[classId]?.name || "Đang tải..."}
+                Lớp: <span className="text-base">{classesMap[classId]?.name || "Đang tải..."}</span>
               </h3>
               
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {/* Đúng giờ */}
-                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col items-center justify-center hover:border-green-200 transition-colors">
+                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] flex flex-col items-center justify-center">
                   <span className="text-3xl font-extrabold text-green-600 mb-1">{count.present}</span>
-                  <div className="flex items-center gap-1 text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full uppercase">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-green-700 bg-green-50 px-2.5 py-1 rounded-full uppercase tracking-wide">
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                     Đúng giờ
                   </div>
                 </div>
 
                 {/* Đi trễ */}
-                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col items-center justify-center hover:border-orange-200 transition-colors">
+                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] flex flex-col items-center justify-center">
                   <span className="text-3xl font-extrabold text-orange-500 mb-1">{count.late}</span>
-                  <div className="flex items-center gap-1 text-xs font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full uppercase">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-orange-700 bg-orange-50 px-2.5 py-1 rounded-full uppercase tracking-wide">
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     Đi trễ
                   </div>
                 </div>
 
                 {/* Có phép */}
-                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col items-center justify-center hover:border-blue-200 transition-colors">
+                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] flex flex-col items-center justify-center">
                   <span className="text-3xl font-extrabold text-blue-600 mb-1">{count.excused}</span>
-                  <div className="flex items-center gap-1 text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full uppercase">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full uppercase tracking-wide">
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                     Có phép
                   </div>
                 </div>
 
                 {/* Không phép */}
-                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col items-center justify-center hover:border-red-200 transition-colors">
+                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] flex flex-col items-center justify-center">
                   <span className="text-3xl font-extrabold text-red-600 mb-1">{count.absent}</span>
-                  <div className="flex items-center gap-1 text-xs font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full uppercase">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-red-700 bg-red-50 px-2.5 py-1 rounded-full uppercase tracking-wide">
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                     Không phép
                   </div>
