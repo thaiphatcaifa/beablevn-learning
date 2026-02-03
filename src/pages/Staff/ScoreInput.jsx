@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { ref, onValue, push, set } from "firebase/database";
+import { useAuth } from '../../context/AuthContext'; // 1. Import Auth
 
 const ScoreInput = () => {
+  const { userData } = useAuth(); // 2. Lấy thông tin user hiện tại
   const [students, setStudents] = useState([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [classes, setClasses] = useState([]);
@@ -11,10 +13,32 @@ const ScoreInput = () => {
   const [scoreHistory, setScoreHistory] = useState({});
 
   useEffect(() => {
-    onValue(ref(db, 'classes'), (snap) => setClasses(snap.val() ? Object.entries(snap.val()).map(([id, val]) => ({ id, ...val })) : []));
-    onValue(ref(db, 'users'), (snap) => { if(snap.val()) setStudents(Object.entries(snap.val()).map(([id, val]) => ({ id, ...val })).filter(u => u.role === 'student')); });
+    // 3. Lấy và Lọc danh sách lớp theo assignedClasses
+    onValue(ref(db, 'classes'), (snap) => {
+      const data = snap.val();
+      if (data) {
+        const allClasses = Object.entries(data).map(([id, val]) => ({ id, ...val }));
+        
+        // Chỉ lấy các lớp được phân công
+        const myClassIds = userData?.assignedClasses || [];
+        const myClasses = allClasses.filter(c => myClassIds.includes(c.id));
+        
+        setClasses(myClasses);
+      } else {
+        setClasses([]);
+      }
+    });
+
+    // Lấy danh sách học viên
+    onValue(ref(db, 'users'), (snap) => { 
+      if(snap.val()) {
+        setStudents(Object.entries(snap.val()).map(([id, val]) => ({ id, ...val })).filter(u => u.role === 'student')); 
+      }
+    });
+
+    // Lấy lịch sử điểm
     onValue(ref(db, 'scores'), (snap) => setScoreHistory(snap.val() || {}));
-  }, []);
+  }, [userData]); // Chạy lại khi userData thay đổi
 
   const filteredStudents = selectedClass ? students.filter(s => (s.classIds || []).includes(selectedClass) || s.classId === selectedClass) : [];
 
@@ -43,10 +67,14 @@ const ScoreInput = () => {
          <h2 className="text-xl font-bold text-[#003366]">Nhập Kết quả Học tập</h2>
       </div>
       
-      <select className="border border-slate-200 p-2.5 rounded-lg w-full md:w-1/3 text-sm outline-none focus:border-[#003366] mb-6 font-medium" value={selectedClass} onChange={e => setSelectedClass(e.target.value)}>
-         <option value="">-- Chọn Lớp --</option>
-         {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-      </select>
+      <div className="mb-6">
+        <label className="text-xs font-bold text-slate-400 uppercase block mb-2">Chọn Lớp học (Được phân công)</label>
+        <select className="border border-slate-200 p-2.5 rounded-lg w-full md:w-1/3 text-sm outline-none focus:border-[#003366] font-medium" value={selectedClass} onChange={e => setSelectedClass(e.target.value)}>
+           <option value="">-- Chọn Lớp --</option>
+           {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        {classes.length === 0 && <p className="text-xs text-red-500 mt-1 italic">Bạn chưa được phân công lớp nào.</p>}
+      </div>
 
       <div className="flex gap-1 mb-6 overflow-x-auto pb-2 border-b border-slate-100">
         {[ {id:'bonus',l:'Điểm Cộng'}, {id:'homework',l:'BTVN'}, {id:'test',l:'Kiểm tra'} ].map(t => (
@@ -85,6 +113,7 @@ const ScoreInput = () => {
             </div>
           );
         })}
+        {selectedClass && filteredStudents.length === 0 && <p className="text-center text-slate-400 italic py-8">Lớp này chưa có học viên nào.</p>}
       </div>
     </div>
   );

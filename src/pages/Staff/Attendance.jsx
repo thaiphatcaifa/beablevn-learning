@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { ref, onValue, update } from "firebase/database";
+import { useAuth } from '../../context/AuthContext'; // 1. Import Auth
 
 const Attendance = () => {
+  const { userData } = useAuth(); // 2. Lấy user hiện tại
   const [tab, setTab] = useState('take'); 
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -14,10 +16,25 @@ const Attendance = () => {
   const [endDate, setEndDate] = useState('');
 
   useEffect(() => {
-    onValue(ref(db, 'classes'), (snap) => setClasses(snap.val() ? Object.entries(snap.val()).map(([id, val]) => ({ id, ...val })) : []));
+    // Lấy Classes và Lọc
+    onValue(ref(db, 'classes'), (snap) => {
+      const data = snap.val();
+      if (data) {
+         const allClasses = Object.entries(data).map(([id, val]) => ({ id, ...val }));
+         
+         // 3. Lọc: Chỉ lấy lớp được phân công
+         const myClassIds = userData?.assignedClasses || [];
+         const myClasses = allClasses.filter(c => myClassIds.includes(c.id));
+         
+         setClasses(myClasses);
+      } else {
+         setClasses([]);
+      }
+    });
+
     onValue(ref(db, 'users'), (snap) => { if(snap.val()) setStudents(Object.entries(snap.val()).map(([id, val]) => ({ id, ...val })).filter(u => u.role === 'student')); });
     onValue(ref(db, 'attendance'), (snap) => setAllAttendance(snap.val() || {}));
-  }, []);
+  }, [userData]); // Chạy lại khi userData load xong
 
   const filteredStudents = selectedClass ? students.filter(s => (s.classIds || []).includes(selectedClass) || s.classId === selectedClass) : [];
 
@@ -49,10 +66,14 @@ const Attendance = () => {
          <button onClick={() => setTab('summary')} className={`pb-3 text-sm font-bold uppercase tracking-wide transition-all ${tab==='summary'?'text-[#003366] border-b-2 border-[#003366]':'text-slate-400 hover:text-slate-600'}`}>Tổng kết</button>
       </div>
 
-      <select className="border border-slate-200 p-2.5 rounded-lg w-full md:w-1/3 text-sm outline-none focus:border-[#003366] mb-6 font-medium" value={selectedClass} onChange={e => setSelectedClass(e.target.value)}>
-          <option value="">-- Chọn Lớp --</option>
-          {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-      </select>
+      <div className="mb-6">
+         <label className="text-xs font-bold text-slate-400 uppercase block mb-2">Chọn Lớp học (Được phân công)</label>
+         <select className="border border-slate-200 p-2.5 rounded-lg w-full md:w-1/3 text-sm outline-none focus:border-[#003366] font-medium" value={selectedClass} onChange={e => setSelectedClass(e.target.value)}>
+            <option value="">-- Chọn Lớp --</option>
+            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+         </select>
+         {classes.length === 0 && <p className="text-xs text-red-500 mt-1 italic">Bạn chưa được phân công lớp nào.</p>}
+      </div>
 
       {tab === 'take' && selectedClass && (
         <div className="animate-fade-in-up">

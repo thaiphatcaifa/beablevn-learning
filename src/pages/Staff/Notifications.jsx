@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { ref, push, onValue } from "firebase/database";
+import { useAuth } from '../../context/AuthContext'; // 1. Import Auth
 
 const Notifications = () => {
+  const { userData } = useAuth(); // 2. Lấy thông tin user hiện tại
+  
   // State cho nội dung
   const [mode, setMode] = useState('text'); // 'text' | 'link'
   const [content, setContent] = useState('');
@@ -11,20 +14,28 @@ const Notifications = () => {
 
   // State cho Phạm vi (Target)
   const [targetType, setTargetType] = useState('all'); // 'all' | 'class' | 'date'
-  const [selectedTargets, setSelectedTargets] = useState([]); // Mảng lưu ID lớp hoặc Thứ (T2, T3...)
+  const [selectedTargets, setSelectedTargets] = useState([]); // Mảng lưu ID lớp hoặc Thứ
   
-  // Dữ liệu lớp học để hiển thị checkbox
+  // Dữ liệu lớp học
   const [classes, setClasses] = useState([]);
 
   useEffect(() => {
-    // Lấy danh sách lớp để giáo viên chọn
+    // Lấy danh sách lớp và lọc theo quyền hạn
     onValue(ref(db, 'classes'), (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        setClasses(Object.entries(data).map(([id, val]) => ({ id, ...val })));
+        const allClasses = Object.entries(data).map(([id, val]) => ({ id, ...val }));
+        
+        // 3. LỌC: Chỉ lấy các lớp có trong assignedClasses của GV
+        const myClassIds = userData?.assignedClasses || [];
+        const myClasses = allClasses.filter(c => myClassIds.includes(c.id));
+        
+        setClasses(myClasses);
+      } else {
+        setClasses([]);
       }
     });
-  }, []);
+  }, [userData]); // Chạy lại khi userData thay đổi
 
   // Xử lý chọn/bỏ chọn target
   const toggleTarget = (value) => {
@@ -48,9 +59,8 @@ const Notifications = () => {
       content: mode === 'text' ? content : linkUrl,
       label: mode === 'text' ? label : 'link',
       date: new Date().toLocaleDateString('vi-VN'),
-      author: 'Giáo viên/CCO',
+      author: userData?.name || 'Giáo viên/CCO', // Lấy tên thật của người đăng
       timestamp: Date.now(),
-      // Lưu thông tin target để lọc
       targetType, 
       targets: targetType === 'all' ? ['all'] : selectedTargets
     });
@@ -66,7 +76,9 @@ const Notifications = () => {
   return (
     <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm">
       <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-4">
-         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#003366" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 110-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.996.912 2.164 1.661 2.868C12.72 18.261 13.9 18 14.5 18c.6 0 1.78-.261 2.5-.952.749-.704 1.408-1.872 1.661-2.868m-7.821-7.42a6 6 0 00-1.2-.533m8.91 9.963a6.002 6.002 0 01-1.2.533m-7.71-10.496a3.504 3.504 0 011.05-1.928m6.72 1.928a3.504 3.504 0 00-1.05-1.928" /></svg>
+         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#003366" className="w-6 h-6">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+         </svg>
          <h2 className="text-xl font-bold text-[#003366]">Đăng Thông Báo Mới</h2>
       </div>
 
@@ -140,7 +152,7 @@ const Notifications = () => {
               {targetType === 'all' && (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400">
                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 mb-2 opacity-50"><path strokeLinecap="round" strokeLinejoin="round" d="M12.75 19.5v-.75a7.5 7.5 0 00-7.5-7.5H4.5m0-6.75h.75c7.87 0 14.25 6.38 14.25 14.25v.75M6 18.75a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></svg>
-                   <p className="text-sm font-medium">Thông báo sẽ gửi đến toàn bộ học viên.</p>
+                   <p className="text-sm font-medium">Gửi đến tất cả lớp do bạn phụ trách.</p>
                 </div>
               )}
 
@@ -155,7 +167,7 @@ const Notifications = () => {
                         </div>
                      </label>
                    ))}
-                   {classes.length === 0 && <p className="text-center text-slate-400 py-4">Chưa có lớp học nào.</p>}
+                   {classes.length === 0 && <p className="text-center text-slate-400 py-4 text-sm italic">Bạn chưa được phân công lớp nào.</p>}
                 </div>
               )}
 

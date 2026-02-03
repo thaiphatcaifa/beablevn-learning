@@ -1,19 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { ref, onValue } from "firebase/database";
+import { useAuth } from '../../context/AuthContext'; // 1. Import Auth
 
 const ClassList = () => {
+  const { userData } = useAuth(); // 2. Lấy thông tin user hiện tại (chứa assignedClasses)
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
-  const [viewMode, setViewMode] = useState('class'); // 'class' | 'time'
+  const [viewMode, setViewMode] = useState('class');
   const [filterValue, setFilterValue] = useState('');
 
   useEffect(() => {
-    // Lấy dữ liệu lớp học để map tên lớp/lịch học
+    // Lấy danh sách lớp được phân công
     onValue(ref(db, 'classes'), (snapshot) => {
       const data = snapshot.val();
       if(data) {
-        setClasses(Object.entries(data).map(([id, val]) => ({ id, ...val })));
+        const allClasses = Object.entries(data).map(([id, val]) => ({ id, ...val }));
+        
+        // 3. Lọc: Chỉ lấy các lớp có trong assignedClasses của GV
+        const myClassIds = userData?.assignedClasses || [];
+        const myClasses = allClasses.filter(c => myClassIds.includes(c.id));
+        
+        setClasses(myClasses);
       }
     });
 
@@ -21,29 +29,38 @@ const ClassList = () => {
     onValue(ref(db, 'users'), (snapshot) => {
       const data = snapshot.val();
       if(data) {
-        const list = Object.values(data).filter(u => u.role === 'student');
+        const myClassIds = userData?.assignedClasses || [];
+
+        const list = Object.values(data).filter(u => {
+          // Phải là học viên
+          if (u.role !== 'student') return false;
+
+          // 4. Lọc: Học viên phải thuộc ít nhất 1 lớp mà GV phụ trách
+          const studentClasses = u.classIds || (u.classId ? [u.classId] : []);
+          const isMyStudent = studentClasses.some(id => myClassIds.includes(id));
+          
+          return isMyStudent;
+        });
+        
         setStudents(list);
       }
     });
-  }, []);
+  }, [userData]); // Chạy lại khi userData thay đổi
 
-  // Hàm lấy thông tin lớp (Tên hoặc Lịch) dựa trên ID
   const getClassInfo = (student, type) => {
     if (!student.classIds || !Array.isArray(student.classIds)) return [];
     return student.classIds.map(id => {
+      // Chỉ hiển thị thông tin của những lớp mà GV này quản lý (có trong state classes đã lọc)
       const foundClass = classes.find(c => c.id === id);
       if (!foundClass) return null;
       return type === 'name' ? foundClass.name : `${foundClass.schedule} (${foundClass.startTime}-${foundClass.endTime})`;
     }).filter(Boolean);
   };
 
-  // Lọc và Sắp xếp danh sách
   const filteredStudents = students.filter(st => {
     const classNames = getClassInfo(st, 'name').join(' ').toLowerCase();
     const schedules = getClassInfo(st, 'time').join(' ').toLowerCase();
     const search = filterValue.toLowerCase();
-    
-    // Nếu viewMode là 'time', ưu tiên tìm theo lịch, ngược lại tìm theo tên lớp
     return viewMode === 'time' ? schedules.includes(search) : classNames.includes(search);
   });
 
@@ -56,28 +73,16 @@ const ClassList = () => {
          </div>
          
          <div className="flex gap-2 w-full md:w-auto">
-            {/* Dropdown chọn chế độ xem */}
-            <select 
-              className="border border-slate-200 p-2 rounded-lg text-sm outline-none focus:border-[#003366] bg-slate-50 font-medium text-[#003366]"
-              value={viewMode}
-              onChange={(e) => setViewMode(e.target.value)}
-            >
+            <select className="border border-slate-200 p-2 rounded-lg text-sm outline-none focus:border-[#003366] bg-slate-50 font-medium text-[#003366]" value={viewMode} onChange={(e) => setViewMode(e.target.value)}>
               <option value="class">Xem theo Lớp</option>
               <option value="time">Xem theo Thời gian</option>
             </select>
-
-            {/* Ô tìm kiếm/lọc */}
-            <input 
-              className="border border-slate-200 p-2 rounded-lg text-sm outline-none focus:border-[#003366] w-full"
-              placeholder={viewMode === 'class' ? "Lọc theo tên lớp..." : "Lọc theo giờ học..."}
-              value={filterValue}
-              onChange={(e) => setFilterValue(e.target.value)}
-            />
+            <input className="border border-slate-200 p-2 rounded-lg text-sm outline-none focus:border-[#003366] w-full" placeholder={viewMode === 'class' ? "Lọc theo tên lớp..." : "Lọc theo giờ học..."} value={filterValue} onChange={(e) => setFilterValue(e.target.value)} />
          </div>
       </div>
 
       <div className="grid gap-3">
-        {filteredStudents.length === 0 && <p className="text-slate-400 text-center py-8 italic">Không tìm thấy kết quả phù hợp.</p>}
+        {filteredStudents.length === 0 && <p className="text-slate-400 text-center py-8 italic">Không tìm thấy kết quả phù hợp (Hoặc chưa được gán lớp).</p>}
         {filteredStudents.map((st, idx) => {
           const infoList = getClassInfo(st, viewMode === 'class' ? 'name' : 'time');
           return (
@@ -91,14 +96,14 @@ const ClassList = () => {
               </div>
               <div className="text-right">
                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">
-                    {viewMode === 'class' ? 'Lớp đang học' : 'Lịch học'}
+                    {viewMode === 'class' ? 'Lớp phụ trách' : 'Lịch học'}
                  </div>
                  <div className="flex flex-col items-end gap-1">
                     {infoList.length > 0 ? infoList.map((info, i) => (
                       <span key={i} className={`text-xs px-2 py-1 rounded font-medium border ${viewMode === 'class' ? 'bg-blue-50 text-[#003366] border-blue-100' : 'bg-orange-50 text-orange-700 border-orange-100'}`}>
                         {info}
                       </span>
-                    )) : <span className="text-xs text-slate-300 italic">Chưa xếp lớp</span>}
+                    )) : <span className="text-xs text-slate-300 italic">--</span>}
                  </div>
               </div>
             </div>

@@ -9,21 +9,40 @@ const MyGrades = () => {
 
   useEffect(() => {
     if (currentUser) {
-      onValue(ref(db, `scores/${currentUser.uid}`), (snap) => {
+      const scoreRef = ref(db, `scores/${currentUser.uid}`);
+      const unsubscribe = onValue(scoreRef, (snap) => {
         setScore(snap.val());
       });
+      return () => unsubscribe();
     }
   }, [currentUser]);
 
-  if (!score) return <div className="bg-white p-8 rounded-xl border border-slate-100 shadow-sm text-center text-slate-400 italic">Chưa có dữ liệu điểm.</div>;
+  // Logic tính toán
+  const calculateTotal = (data, type) => {
+    if (!data) return 0;
+    const values = Object.values(data).map(item => Number(item.value) || 0);
+    if (values.length === 0) return 0;
+    const sum = values.reduce((acc, curr) => acc + curr, 0);
+    
+    if (type === 'bonus') return sum;
+    return (sum / values.length).toFixed(1);
+  };
 
-  const Card = ({ title, value, icon, bgClass, textClass, borderClass }) => (
-    <div className={`p-6 rounded-xl border ${bgClass} ${borderClass} flex items-center justify-between`}>
+  if (!score) return (
+    <div className="bg-white p-8 rounded-xl border border-slate-100 shadow-sm text-center text-slate-400 italic">
+       <div className="text-4xl mb-2 grayscale opacity-30">📊</div>
+       Chưa có dữ liệu điểm.
+    </div>
+  );
+
+  // Card Component: Icon màu #003366, Nền nhạt tùy loại
+  const Card = ({ title, value, icon, bgClass }) => (
+    <div className={`p-6 rounded-xl border border-slate-100 ${bgClass} flex items-center justify-between shadow-sm hover:shadow-md transition-all`}>
       <div>
-        <div className={`text-3xl font-extrabold mb-1 ${textClass}`}>{value}</div>
-        <div className={`text-sm font-bold opacity-80 ${textClass}`}>{title}</div>
+        <div className="text-3xl font-extrabold mb-1 text-[#003366]">{value}</div>
+        <div className="text-sm font-bold text-slate-600 uppercase tracking-wide">{title}</div>
       </div>
-      <div className={`w-12 h-12 rounded-full flex items-center justify-center bg-white/80 shadow-sm ${textClass}`}>
+      <div className="w-12 h-12 rounded-full flex items-center justify-center bg-white shadow-sm text-[#003366]">
         {icon}
       </div>
     </div>
@@ -39,32 +58,44 @@ const MyGrades = () => {
       </h2>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Điểm Cộng (Bonus) - Icon Star */}
         <Card 
           title="Điểm Cộng" 
-          value={`+${score.bonus || 0}`} 
-          bgClass="bg-green-50" 
-          borderClass="border-green-100" 
-          textClass="text-green-700"
-          icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>}
+          value={`+${calculateTotal(score?.bonus, 'bonus')}`} 
+          bgClass="bg-yellow-50"
+          icon={
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+            </svg>
+          }
         />
+        
+        {/* Bài Tập (Homework) - Icon Document */}
         <Card 
-          title="Bài Tập" 
-          value={score.homework || 0} 
-          bgClass="bg-blue-50" 
-          borderClass="border-blue-100" 
-          textClass="text-[#003366]"
-          icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>}
+          title="Bài Tập (TB)" 
+          value={calculateTotal(score?.homework, 'homework')} 
+          bgClass="bg-blue-50"
+          icon={
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            </svg>
+          }
         />
+        
+        {/* Kiểm Tra (Test) - Icon Clipboard Check */}
         <Card 
-          title="Kiểm Tra" 
-          value={score.test || 0} 
-          bgClass="bg-purple-50" 
-          borderClass="border-purple-100" 
-          textClass="text-purple-700"
-          icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>}
+          title="Kiểm Tra (TB)" 
+          value={calculateTotal(score?.test, 'test')} 
+          bgClass="bg-purple-50"
+          icon={
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          }
         />
       </div>
     </div>
   );
 };
+
 export default MyGrades;
