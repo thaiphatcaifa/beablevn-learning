@@ -1,24 +1,74 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { ref, onValue } from "firebase/database";
+import { useAuth } from '../../context/AuthContext'; // 1. Import Auth để lấy thông tin học viên
 
 const StudentNotifications = () => {
+  const { userData } = useAuth(); // 2. Lấy userData
   const [notifs, setNotifs] = useState([]);
+  const [classesMap, setClassesMap] = useState({}); // Map để tra cứu lịch học
 
+  // 3. Lấy dữ liệu lớp học để biết lịch học (Schedule)
   useEffect(() => {
-    onValue(ref(db, 'notifications'), (snap) => {
-      const data = snap.val();
-      // Chuyển object thành array và sắp xếp mới nhất lên đầu
-      setNotifs(data ? Object.values(data).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)) : []);
+    const unsubClasses = onValue(ref(db, 'classes'), (snap) => {
+      setClassesMap(snap.val() || {});
     });
+    return () => unsubClasses();
   }, []);
 
-  // Hàm render nhãn dán
+  // 4. Lấy và Lọc thông báo
+  useEffect(() => {
+    const unsubNotifs = onValue(ref(db, 'notifications'), (snap) => {
+      const data = snap.val();
+      
+      if (data && userData) {
+        // Lấy danh sách ID các lớp học viên đang theo học
+        const myClassIds = userData.classIds || (userData.classId ? [userData.classId] : []);
+        
+        // Tạo chuỗi gộp tất cả lịch học của học viên (VD: "T2-T4 T7-CN") để dễ tìm kiếm
+        const mySchedules = myClassIds.map(id => classesMap[id]?.schedule || '').join(' ').toUpperCase();
+
+        const allNotifs = Object.values(data);
+        
+        // --- LOGIC LỌC ---
+        const filteredNotifs = allNotifs.filter(n => {
+           // Trường hợp 1: Thông báo cho tất cả (Hoặc thông báo cũ chưa có target)
+           if (!n.targetType || n.targetType === 'all') return true;
+
+           const targets = n.targets || [];
+
+           // Trường hợp 2: Thông báo theo Lớp
+           if (n.targetType === 'class') {
+             // Kiểm tra xem học viên có nằm trong bất kỳ lớp nào được tag không
+             return targets.some(targetClassId => myClassIds.includes(targetClassId));
+           }
+
+           // Trường hợp 3: Thông báo theo Ngày (Lịch học)
+           if (n.targetType === 'date') {
+             // Kiểm tra xem lịch học của học viên có chứa ngày được tag không (VD: Target 'T2' có trong 'T2-T4')
+             return targets.some(targetDay => mySchedules.includes(targetDay));
+           }
+
+           return false;
+        });
+
+        // Sắp xếp mới nhất lên đầu
+        filteredNotifs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        setNotifs(filteredNotifs);
+      } else {
+        setNotifs([]);
+      }
+    });
+
+    return () => unsubNotifs();
+  }, [userData, classesMap]); // Chạy lại khi userData hoặc dữ liệu lớp thay đổi
+
+  // Hàm render nhãn dán (Giữ nguyên giao diện cũ)
   const renderLabel = (label) => {
     switch (label) {
-      case 'homework': return <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide border border-blue-200">Báo bài</span>;
-      case 'important': return <span className="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide border border-red-200">Quan trọng</span>;
-      case 'event': return <span className="bg-yellow-100 text-yellow-700 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide border border-yellow-200">Sự kiện</span>;
+      case 'homework': return <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide border border-blue-200">📘 Báo bài</span>;
+      case 'important': return <span className="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide border border-red-200">📕 Quan trọng</span>;
+      case 'event': return <span className="bg-yellow-100 text-yellow-700 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide border border-yellow-200">🏆 Sự kiện</span>;
       case 'link': return <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide border border-slate-200">🔗 Liên kết</span>;
       default: return <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-1 rounded uppercase">Thông báo</span>;
     }
@@ -35,7 +85,7 @@ const StudentNotifications = () => {
       
       {notifs.map((n, i) => (
         <div key={i} className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-          {/* Thanh màu bên trái trang trí */}
+          {/* Thanh màu trang trí */}
           <div className={`absolute left-0 top-0 bottom-0 w-1 group-hover:w-2 transition-all ${
              n.label === 'important' ? 'bg-red-500' : n.label === 'event' ? 'bg-yellow-500' : n.label === 'homework' ? 'bg-blue-500' : 'bg-slate-400'
           }`}></div>
