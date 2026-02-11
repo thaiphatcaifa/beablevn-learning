@@ -1,140 +1,147 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase';
-import { ref, onValue } from "firebase/database";
+import { ref, onValue } from 'firebase/database';
 
 const MyAttendance = () => {
   const { currentUser } = useAuth();
-  const [stats, setStats] = useState({}); // Dữ liệu thống kê theo lớp
-  const [classesMap, setClassesMap] = useState({}); // Map id -> tên lớp
-  const [assignedClasses, setAssignedClasses] = useState([]); // Danh sách lớp được Admin chỉ định
+  const [attendanceData, setAttendanceData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!currentUser) return;
 
-    // 1. Lấy danh sách toàn bộ lớp để hiển thị tên lớp chính xác
-    const unsubClasses = onValue(ref(db, 'classes'), (snap) => {
-      setClassesMap(snap.val() || {});
-    });
+    // 1. Lấy dữ liệu classes để biết tên lớp
+    onValue(ref(db, 'classes'), (classSnap) => {
+      const classes = classSnap.val() || {};
+      
+      // 2. Lấy dữ liệu attendance
+      onValue(ref(db, 'attendance'), (attSnap) => {
+        const attRecord = attSnap.val() || {};
+        const result = [];
+        
+        // Lấy danh sách ID lớp của học viên
+        const studentClassIds = Array.isArray(currentUser.classIds) 
+            ? currentUser.classIds 
+            : Object.values(currentUser.classIds || {});
 
-    // 2. LẮNG NGHE REAL-TIME thông tin User để lấy danh sách lớp mới nhất từ Admin
-    const unsubUser = onValue(ref(db, `users/${currentUser.uid}`), (snap) => {
-      const user = snap.val();
-      if (user) {
-        // Hỗ trợ cả trường hợp nhiều lớp (classIds) và 1 lớp (classId - legacy)
-        const ids = user.classIds || (user.classId ? [user.classId] : []);
-        setAssignedClasses(ids);
-      }
-    });
+        // Duyệt qua từng lớp học viên tham gia
+        studentClassIds.forEach(classId => {
+            const classInfo = classes[classId];
+            if (!classInfo) return;
 
-    return () => {
-      unsubClasses();
-      unsubUser();
-    };
+            // Lấy dữ liệu điểm danh của lớp đó
+            const classAtt = attRecord[classId] || {};
+            
+            let totalSessions = 0;
+            let presentCount = 0;
+            let lateCount = 0;
+            let absentCount = 0;
+            const history = [];
+
+            // Duyệt qua từng ngày điểm danh
+            Object.entries(classAtt).forEach(([date, sessionData]) => {
+                // sessionData là object: { studentId: status, ... }
+                if (sessionData && sessionData[currentUser.id]) {
+                    totalSessions++;
+                    const status = sessionData[currentUser.id];
+                    
+                    if (status === 'present') presentCount++;
+                    else if (status === 'late') lateCount++;
+                    else absentCount++;
+
+                    history.push({ date, status });
+                }
+            });
+
+            // Sắp xếp lịch sử theo ngày giảm dần
+            history.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            // Tính % chuyên cần
+            const diligence = totalSessions > 0 
+                ? Math.round(((presentCount + lateCount * 0.5) / totalSessions) * 100) 
+                : 100;
+
+            result.push({
+                classId,
+                className: classInfo.name,
+                diligence,
+                totalSessions,
+                presentCount,
+                lateCount,
+                absentCount,
+                history
+            });
+        });
+
+        setAttendanceData(result);
+        setLoading(false);
+      });
+    });
   }, [currentUser]);
 
-  useEffect(() => {
-    if (!currentUser) return;
-
-    // 3. Lấy dữ liệu điểm danh và tính toán thống kê
-    const unsubAttendance = onValue(ref(db, 'attendance'), (snap) => {
-      const data = snap.val() || {};
-      let myStats = {};
-
-      // QUAN TRỌNG: Chỉ duyệt qua các lớp mà Admin đã gán cho học viên
-      // Điều này đảm bảo thông tin hiển thị luôn khớp với Admin chỉ định
-      assignedClasses.forEach(classId => {
-         // Luôn khởi tạo bộ đếm cho lớp được gán (ngay cả khi chưa có dữ liệu điểm danh)
-         myStats[classId] = { present: 0, late: 0, excused: 0, absent: 0 };
-
-         // Nếu lớp này có dữ liệu điểm danh trong hệ thống
-         if (data[classId]) {
-           // Duyệt qua tất cả các ngày đã điểm danh của lớp đó
-           Object.keys(data[classId]).forEach(date => {
-              // Lấy trạng thái của học viên (dựa trên UID)
-              const status = data[classId][date][currentUser.uid];
-              
-              // Nếu có trạng thái và trạng thái hợp lệ thì cộng dồn
-              if (status && myStats[classId][status] !== undefined) {
-                 myStats[classId][status]++;
-              }
-           });
-         }
-      });
-      
-      setStats(myStats);
-    });
-
-    return () => unsubAttendance();
-  }, [currentUser, assignedClasses]); // Chạy lại tính toán khi danh sách lớp thay đổi
+  // Helper render badge trạng thái
+  const renderStatus = (status) => {
+      switch(status) {
+          case 'present': return <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-1 rounded">Có mặt</span>;
+          case 'late': return <span className="bg-yellow-100 text-yellow-700 text-[10px] font-bold px-2 py-1 rounded">Đi muộn</span>;
+          default: return <span className="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-1 rounded">Vắng</span>;
+      }
+  };
 
   return (
-    <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm">
-      <h2 className="text-xl font-bold mb-6 text-[#003366] flex items-center gap-2">
-         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-         </svg>
-         Mức độ Chuyên cần
-      </h2>
+    <div className="space-y-6">
+      <h2 className="text-xl font-bold text-[#003366]">Theo dõi Chuyên cần</h2>
       
-      {assignedClasses.length === 0 ? (
-        <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-xl">
-           <div className="text-4xl mb-3 grayscale opacity-20">📭</div>
-           <p className="text-slate-400 text-sm font-medium">Bạn chưa được xếp vào lớp học nào.</p>
-        </div>
-      ) : Object.keys(stats).length === 0 ? (
-        <div className="text-center py-12">
-           <p className="text-slate-400 italic text-sm">Đang tải dữ liệu...</p>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {Object.entries(stats).map(([classId, count]) => (
-            <div key={classId} className="bg-slate-50 rounded-xl p-5 border border-slate-100 animate-fade-in-up">
-              <h3 className="font-bold text-[#003366] mb-4 text-sm flex items-center gap-2 pb-3 border-b border-slate-200/60">
-                <span className="w-2 h-2 rounded-full bg-[#003366]"></span>
-                Lớp: <span className="text-base">{classesMap[classId]?.name || "Đang tải..."}</span>
-              </h3>
-              
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {/* Đúng giờ */}
-                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] flex flex-col items-center justify-center hover:border-green-200 transition-colors">
-                  <span className="text-3xl font-extrabold text-green-600 mb-1">{count.present}</span>
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-green-700 bg-green-50 px-2.5 py-1 rounded-full uppercase tracking-wide">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                    Đúng giờ
-                  </div>
-                </div>
+      {loading ? <p className="text-slate-400">Đang tải dữ liệu...</p> : (
+        attendanceData.length > 0 ? (
+            attendanceData.map(item => (
+                <div key={item.classId} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    {/* Header Lớp */}
+                    <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                        <div>
+                            <h3 className="font-bold text-[#003366]">{item.className}</h3>
+                            <p className="text-xs text-slate-500">Tổng số buổi đã học: {item.totalSessions}</p>
+                        </div>
+                        <div className="text-right">
+                            <div className="text-2xl font-bold text-[#003366]">{item.diligence}%</div>
+                            <p className="text-[10px] uppercase font-bold text-slate-400">Mức độ chuyên cần</p>
+                        </div>
+                    </div>
 
-                {/* Đi trễ */}
-                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] flex flex-col items-center justify-center hover:border-orange-200 transition-colors">
-                  <span className="text-3xl font-extrabold text-orange-500 mb-1">{count.late}</span>
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-orange-700 bg-orange-50 px-2.5 py-1 rounded-full uppercase tracking-wide">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    Đi trễ
-                  </div>
-                </div>
+                    {/* Chi tiết thống kê */}
+                    <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
+                        <div className="p-3 text-center">
+                            <div className="text-green-600 font-bold">{item.presentCount}</div>
+                            <div className="text-[10px] text-slate-400">Có mặt</div>
+                        </div>
+                        <div className="p-3 text-center">
+                            <div className="text-yellow-600 font-bold">{item.lateCount}</div>
+                            <div className="text-[10px] text-slate-400">Đi muộn</div>
+                        </div>
+                        <div className="p-3 text-center">
+                            <div className="text-red-500 font-bold">{item.absentCount}</div>
+                            <div className="text-[10px] text-slate-400">Vắng</div>
+                        </div>
+                    </div>
 
-                {/* Có phép */}
-                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] flex flex-col items-center justify-center hover:border-blue-200 transition-colors">
-                  <span className="text-3xl font-extrabold text-blue-600 mb-1">{count.excused}</span>
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full uppercase tracking-wide">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                    Có phép
-                  </div>
+                    {/* Lịch sử chi tiết (Cuộn nếu dài) */}
+                    <div className="max-h-48 overflow-y-auto p-4">
+                        <p className="text-xs font-bold text-slate-400 mb-2 uppercase">Lịch sử điểm danh</p>
+                        {item.history.length > 0 ? (
+                            <div className="space-y-2">
+                                {item.history.map((record, idx) => (
+                                    <div key={idx} className="flex justify-between items-center text-sm border-b border-slate-50 pb-2 last:border-0 last:pb-0">
+                                        <span className="text-slate-600 font-medium">{record.date}</span>
+                                        {renderStatus(record.status)}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : <p className="text-sm text-slate-400 italic">Chưa có dữ liệu điểm danh.</p>}
+                    </div>
                 </div>
-
-                {/* Không phép */}
-                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] flex flex-col items-center justify-center hover:border-red-200 transition-colors">
-                  <span className="text-3xl font-extrabold text-red-600 mb-1">{count.absent}</span>
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-red-700 bg-red-50 px-2.5 py-1 rounded-full uppercase tracking-wide">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    Không phép
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))
+        ) : <p className="text-slate-500 italic">Bạn chưa tham gia lớp học nào.</p>
       )}
     </div>
   );

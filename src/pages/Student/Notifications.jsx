@@ -1,136 +1,116 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
-import { ref, onValue } from "firebase/database";
-import { useAuth } from '../../context/AuthContext'; // 1. Import Auth để lấy thông tin học viên
+import { ref, onValue } from 'firebase/database';
+import { useAuth } from '../../context/AuthContext';
 
-const StudentNotifications = () => {
-  const { userData } = useAuth(); // 2. Lấy userData
-  const [notifs, setNotifs] = useState([]);
-  const [classesMap, setClassesMap] = useState({}); // Map để tra cứu lịch học
+const Notifications = () => {
+  const { currentUser } = useAuth();
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // 3. Lấy dữ liệu lớp học để biết lịch học (Schedule)
-  useEffect(() => {
-    const unsubClasses = onValue(ref(db, 'classes'), (snap) => {
-      setClassesMap(snap.val() || {});
-    });
-    return () => unsubClasses();
-  }, []);
-
-  // 4. Lấy và Lọc thông báo
-  useEffect(() => {
-    const unsubNotifs = onValue(ref(db, 'notifications'), (snap) => {
-      const data = snap.val();
-      
-      if (data && userData) {
-        // Lấy danh sách ID các lớp học viên đang theo học
-        const myClassIds = userData.classIds || (userData.classId ? [userData.classId] : []);
-        
-        // Tạo chuỗi gộp tất cả lịch học của học viên (VD: "T2-T4 T7-CN") để dễ tìm kiếm
-        const mySchedules = myClassIds.map(id => classesMap[id]?.schedule || '').join(' ').toUpperCase();
-
-        const allNotifs = Object.values(data);
-        
-        // --- LOGIC LỌC ---
-        const filteredNotifs = allNotifs.filter(n => {
-           // Trường hợp 1: Thông báo cho tất cả (Hoặc thông báo cũ chưa có target)
-           if (!n.targetType || n.targetType === 'all') return true;
-
-           const targets = n.targets || [];
-
-           // Trường hợp 2: Thông báo theo Lớp
-           if (n.targetType === 'class') {
-             // Kiểm tra xem học viên có nằm trong bất kỳ lớp nào được tag không
-             return targets.some(targetClassId => myClassIds.includes(targetClassId));
-           }
-
-           // Trường hợp 3: Thông báo theo Ngày (Lịch học)
-           if (n.targetType === 'date') {
-             // Kiểm tra xem lịch học của học viên có chứa ngày được tag không (VD: Target 'T2' có trong 'T2-T4')
-             return targets.some(targetDay => mySchedules.includes(targetDay));
-           }
-
-           return false;
-        });
-
-        // Sắp xếp mới nhất lên đầu
-        filteredNotifs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-        setNotifs(filteredNotifs);
-      } else {
-        setNotifs([]);
-      }
-    });
-
-    return () => unsubNotifs();
-  }, [userData, classesMap]); // Chạy lại khi userData hoặc dữ liệu lớp thay đổi
-
-  // Hàm render nhãn dán (Giữ nguyên giao diện cũ)
-  const renderLabel = (label) => {
-    switch (label) {
-      case 'homework': return <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide border border-blue-200">📘 Báo bài</span>;
-      case 'important': return <span className="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide border border-red-200">📕 Quan trọng</span>;
-      case 'event': return <span className="bg-yellow-100 text-yellow-700 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide border border-yellow-200">🏆 Sự kiện</span>;
-      case 'link': return <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide border border-slate-200">🔗 Liên kết</span>;
-      default: return <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-1 rounded uppercase">Thông báo</span>;
-    }
+  const LABELS = {
+      'báo bài': 'bg-blue-100 text-blue-800',
+      'quan trọng': 'bg-red-100 text-red-800',
+      'sự kiện': 'bg-yellow-100 text-yellow-800'
   };
 
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const notiRef = ref(db, 'notifications');
+    const unsubscribe = onValue(notiRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        // Lấy danh sách ID lớp của học viên
+        const myClassIds = Array.isArray(currentUser.classIds) 
+            ? currentUser.classIds 
+            : Object.values(currentUser.classIds || {});
+
+        const notiList = Object.entries(data)
+            .map(([id, val]) => ({ id, ...val }))
+            // --- LOGIC LỌC THÔNG BÁO CHO HỌC VIÊN ---
+            .filter(n => n.scope === 'all' || myClassIds.includes(n.scope))
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+        setNotifications(notiList);
+      } else {
+        setNotifications([]);
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
   return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-bold text-[#003366] mb-6 flex items-center gap-2">
-         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-           <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-         </svg>
-         Bảng Tin & Sự Kiện
-      </h2>
-      
-      {notifs.map((n, i) => (
-        <div key={i} className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-          {/* Thanh màu trang trí */}
-          <div className={`absolute left-0 top-0 bottom-0 w-1 group-hover:w-2 transition-all ${
-             n.label === 'important' ? 'bg-red-500' : n.label === 'event' ? 'bg-yellow-500' : n.label === 'homework' ? 'bg-blue-500' : 'bg-slate-400'
-          }`}></div>
-
-          <div className="flex justify-between items-start mb-3 pl-3">
-             {renderLabel(n.label)}
-             <span className="text-xs text-slate-400 font-medium">{n.date}</span>
-          </div>
-
-          <div className="pl-3">
-            {n.mode === 'link' ? (
-              <div className="mt-2">
-                 <p className="text-sm text-slate-600 mb-3 italic">Giáo viên đã chia sẻ một liên kết:</p>
-                 <a 
-                   href={n.content} 
-                   target="_blank" 
-                   rel="noopener noreferrer"
-                   className="inline-flex items-center gap-2 bg-[#003366] text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-[#002244] transition-colors shadow-sm"
-                 >
-                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
-                   Mở Trang Web
-                 </a>
-              </div>
-            ) : (
-              <p className="text-slate-800 font-medium leading-relaxed text-sm whitespace-pre-line">{n.content}</p>
-            )}
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-slate-50 text-xs text-slate-500 pl-3 flex items-center gap-1">
-             <span className="font-bold text-[#003366]">Đăng bởi:</span> {n.author || 'Ban quản lý'}
-          </div>
+    <div className="space-y-6">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-2 bg-blue-50 rounded-lg text-[#003366]">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" /></svg>
         </div>
-      ))}
+        <div>
+            <h2 className="text-xl font-bold text-[#003366]">Bảng Tin & Sự Kiện</h2>
+            <p className="text-xs text-slate-400 font-medium">Cập nhật tin tức mới nhất từ BE ABLE</p>
+        </div>
+      </div>
 
-      {notifs.length === 0 && (
-         <div className="text-center py-12 bg-white rounded-xl border border-slate-100 text-slate-300">
-             <div className="flex justify-center mb-2">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-12 h-12">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                </svg>
-             </div>
-             Không có thông báo mới.
-         </div>
+      {loading ? <p className="text-slate-400 text-center py-10">Đang tải...</p> : (
+        <div className="space-y-4">
+          {notifications.length > 0 ? notifications.map((noti) => (
+            <div key={noti.id} className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex gap-4">
+              {/* ICON */}
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  noti.type === 'link' ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-[#003366]'
+              }`}>
+                  {noti.type === 'link' ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" /></svg>
+                  ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
+                  )}
+              </div>
+
+              {/* CONTENT */}
+              <div className="flex-1">
+                <div className="flex justify-between items-start mb-2">
+                    <div className="flex items-center gap-2">
+                        {noti.type === 'content' && noti.label && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${LABELS[noti.label] || 'bg-gray-100'}`}>
+                                {noti.label}
+                            </span>
+                        )}
+                        <span className="text-[10px] text-slate-400 bg-slate-50 px-2 py-0.5 rounded font-medium">
+                            {new Date(noti.date).toLocaleDateString('vi-VN')}
+                        </span>
+                    </div>
+                </div>
+                
+                <h3 className="font-bold text-slate-800 text-md mb-2">{noti.title}</h3>
+                
+                {/* HIỂN THỊ DỰA TRÊN LOẠI */}
+                {noti.type === 'link' ? (
+                    <a 
+                        href={noti.linkUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 bg-[#003366] text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-[#002244] transition-all shadow-md shadow-blue-900/10"
+                    >
+                        <span>Mở {noti.title}</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                    </a>
+                ) : (
+                    <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{noti.content}</p>
+                )}
+              </div>
+            </div>
+          )) : (
+            <div className="text-center py-10 bg-white rounded-xl border border-dashed border-slate-200">
+                <p className="text-slate-400 text-sm">Hiện chưa có thông báo nào dành cho bạn.</p>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
 };
-export default StudentNotifications;
+
+export default Notifications;

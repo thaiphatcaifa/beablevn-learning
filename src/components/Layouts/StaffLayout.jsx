@@ -1,99 +1,155 @@
-import React from 'react';
-import { Link, Outlet, useLocation, Navigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { auth } from '../../firebase';
+import { db } from '../../firebase'; // Import db
+import { ref, update, get } from 'firebase/database'; // Import thao tác DB
+import bcrypt from 'bcryptjs'; // Import mã hóa
 
 const Icons = {
   Class: ({ active }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke={active ? "#003366" : "#64748b"} className="w-5 h-5">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m-6 2.292c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 006 18c2.305 0 4.408.867 6 2.292M7.5 12h3" />
     </svg>
   ),
   Attendance: ({ active }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke={active ? "#003366" : "#64748b"} className="w-5 h-5">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
     </svg>
   ),
   Scores: ({ active }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke={active ? "#003366" : "#64748b"} className="w-5 h-5">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
     </svg>
   ),
-  Notifications: ({ active }) => (
+  Noti: ({ active }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke={active ? "#003366" : "#64748b"} className="w-5 h-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
     </svg>
   ),
   Logout: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+    </svg>
+  ),
+  // Icon Chìa khóa cho Đổi mật khẩu
+  Key: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
     </svg>
   )
 };
 
 const StaffLayout = () => {
-  const { userData, currentUser } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout, currentUser } = useAuth(); // Lấy thêm currentUser
 
-  if (!currentUser) return <Navigate to="/login" />;
+  // State cho Modal đổi mật khẩu
+  const [showPassModal, setShowPassModal] = useState(false);
+  const [passForm, setPassForm] = useState({ oldPass: '', newPass: '', confirmPass: '' });
+  const [loadingPass, setLoadingPass] = useState(false);
+
   const isActive = (path) => location.pathname.includes(path);
+  const mobileLinkClass = (path) => `flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive(path) ? 'text-[#003366]' : 'text-slate-400 hover:text-slate-600'}`;
 
-  const sidebarLinkClass = (path) => `
-    flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium
-    ${isActive(path) 
-      ? 'bg-blue-50 text-[#003366]' 
-      : 'text-slate-500 hover:bg-slate-50 hover:text-[#003366]'}
-  `;
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
 
-  const mobileLinkClass = (path) => `
-    flex flex-col items-center justify-center w-full h-full space-y-1
-    ${isActive(path) ? 'text-[#003366]' : 'text-slate-400'}
-  `;
+  // Xử lý đổi mật khẩu
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (!passForm.oldPass || !passForm.newPass || !passForm.confirmPass) return alert("Vui lòng điền đầy đủ thông tin.");
+    if (passForm.newPass !== passForm.confirmPass) return alert("Xác nhận mật khẩu mới không khớp.");
+    if (passForm.newPass.length < 6) return alert("Mật khẩu mới phải từ 6 ký tự trở lên.");
+
+    setLoadingPass(true);
+    try {
+        // 1. Lấy dữ liệu user mới nhất từ DB để check pass cũ
+        const userRef = ref(db, `users/${currentUser.id}`);
+        const snapshot = await get(userRef);
+        const userData = snapshot.val();
+
+        // 2. So sánh pass cũ
+        const isMatch = bcrypt.compareSync(passForm.oldPass, userData.password);
+        if (!isMatch) {
+            setLoadingPass(false);
+            return alert("Mật khẩu cũ không đúng!");
+        }
+
+        // 3. Mã hóa và lưu pass mới
+        const salt = bcrypt.genSaltSync(10);
+        const newHash = bcrypt.hashSync(passForm.newPass, salt);
+
+        await update(userRef, { password: newHash });
+
+        alert("Đổi mật khẩu thành công!");
+        setShowPassModal(false);
+        setPassForm({ oldPass: '', newPass: '', confirmPass: '' });
+
+    } catch (error) {
+        alert("Lỗi: " + error.message);
+    } finally {
+        setLoadingPass(false);
+    }
+  };
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50 font-sans text-slate-800">
-      
-      {/* DESKTOP SIDEBAR */}
-      <aside className="hidden md:flex w-64 border-r border-slate-200 flex-col fixed h-full z-50 bg-white">
-        <div className="p-6 flex items-center gap-3">
-          <img src="/BA LOGO.png" alt="Logo" className="w-8 h-8 object-contain" />
+    <div className="flex h-screen bg-slate-50 font-sans">
+      {/* SIDEBAR (Desktop) */}
+      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 h-full fixed left-0 top-0 z-50">
+        <div className="p-6 border-b border-slate-100 flex items-center gap-3">
+          <img src="/BA LOGO.png" alt="Logo" className="w-10 h-10 object-contain" />
           <div>
-            <h1 className="text-[#003366] font-bold text-base">Be Able VN</h1>
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Staff Portal</span>
+            <h1 className="font-extrabold text-[#003366] text-lg leading-tight">BE ABLE</h1>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Teacher Portal</p>
           </div>
         </div>
 
-        <div className="px-6 pb-6">
-           <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <div className="w-8 h-8 rounded-full bg-[#003366] text-white flex items-center justify-center text-xs font-bold">{userData?.name?.charAt(0)}</div>
-              <div className="overflow-hidden">
-                 <div className="text-sm font-bold text-slate-700 truncate">{userData?.name}</div>
-                 <div className="text-[10px] text-slate-400 uppercase font-semibold">{userData?.role}</div>
-              </div>
-           </div>
-        </div>
-
-        <nav className="flex-1 px-4 space-y-1">
-          <Link to="/staff/classes" className={sidebarLinkClass('classes')}><Icons.Class active={isActive('classes')} /> <span>Lớp học</span></Link>
-          <Link to="/staff/attendance" className={sidebarLinkClass('attendance')}><Icons.Attendance active={isActive('attendance')} /> <span>Điểm danh</span></Link>
-          <Link to="/staff/scores" className={sidebarLinkClass('scores')}><Icons.Scores active={isActive('scores')} /> <span>Kết quả</span></Link>
-          <Link to="/staff/notifications" className={sidebarLinkClass('notifications')}><Icons.Notifications active={isActive('notifications')} /> <span>Thông báo</span></Link>
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+          <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 mt-2">Giảng dạy</p>
+          
+          <Link to="/staff/classes" className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm ${isActive('classes') ? 'bg-[#003366]/5 text-[#003366]' : 'text-slate-600 hover:bg-slate-50'}`}>
+            <Icons.Class active={isActive('classes')} /> Lớp học của tôi
+          </Link>
+          <Link to="/staff/attendance" className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm ${isActive('attendance') ? 'bg-[#003366]/5 text-[#003366]' : 'text-slate-600 hover:bg-slate-50'}`}>
+            <Icons.Attendance active={isActive('attendance')} /> Điểm danh
+          </Link>
+          <Link to="/staff/scores" className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm ${isActive('scores') ? 'bg-[#003366]/5 text-[#003366]' : 'text-slate-600 hover:bg-slate-50'}`}>
+            <Icons.Scores active={isActive('scores')} /> Nhập điểm
+          </Link>
+          <Link to="/staff/notifications" className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm ${isActive('notifications') ? 'bg-[#003366]/5 text-[#003366]' : 'text-slate-600 hover:bg-slate-50'}`}>
+            <Icons.Noti active={isActive('notifications')} /> Thông báo
+          </Link>
         </nav>
 
-        <div className="p-4 border-t border-slate-100">
-          <button onClick={() => auth.signOut()} className="w-full flex items-center justify-center gap-2 p-2.5 text-red-500 hover:bg-red-50 rounded-lg text-sm font-medium">
-            <Icons.Logout /> <span>Thoát</span>
-          </button>
+        <div className="p-4 border-t border-slate-100 space-y-1">
+           {/* Nút Đổi Mật Khẩu Desktop */}
+           <button onClick={() => setShowPassModal(true)} className="flex items-center gap-3 px-4 py-3 rounded-xl w-full text-slate-500 hover:bg-blue-50 hover:text-[#003366] transition-all font-medium text-sm">
+             <Icons.Key /> Đổi mật khẩu
+           </button>
+           <button onClick={handleLogout} className="flex items-center gap-3 px-4 py-3 rounded-xl w-full text-slate-500 hover:bg-red-50 hover:text-red-600 transition-all font-medium text-sm">
+             <Icons.Logout /> Đăng xuất
+           </button>
         </div>
       </aside>
 
       {/* MOBILE HEADER */}
-      <header className="md:hidden sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-slate-200 px-4 h-14 flex items-center justify-between">
+      <header className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-slate-200 z-50 px-4 flex justify-between items-center shadow-sm">
         <div className="flex items-center gap-2">
           <img src="/BA LOGO.png" alt="Logo" className="w-7 h-7 object-contain" />
           <span className="text-[#003366] font-bold text-sm">Staff Portal</span>
         </div>
-        <button onClick={() => auth.signOut()} className="p-2 text-slate-400 hover:text-red-500"><Icons.Logout /></button>
+        <div className="flex items-center gap-1">
+            {/* Nút Đổi Mật Khẩu Mobile */}
+            <button onClick={() => setShowPassModal(true)} className="p-2 text-slate-400 hover:text-[#003366]">
+                <Icons.Key />
+            </button>
+            <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-500">
+                <Icons.Logout />
+            </button>
+        </div>
       </header>
 
       {/* MAIN CONTENT */}
@@ -106,8 +162,45 @@ const StaffLayout = () => {
         <Link to="/staff/classes" className={mobileLinkClass('classes')}><Icons.Class active={isActive('classes')} /><span className="text-[10px] font-medium">Lớp</span></Link>
         <Link to="/staff/attendance" className={mobileLinkClass('attendance')}><Icons.Attendance active={isActive('attendance')} /><span className="text-[10px] font-medium">Đ.Danh</span></Link>
         <Link to="/staff/scores" className={mobileLinkClass('scores')}><Icons.Scores active={isActive('scores')} /><span className="text-[10px] font-medium">Điểm</span></Link>
-        <Link to="/staff/notifications" className={mobileLinkClass('notifications')}><Icons.Notifications active={isActive('notifications')} /><span className="text-[10px] font-medium">Tin</span></Link>
+        <Link to="/staff/notifications" className={mobileLinkClass('notifications')}><Icons.Noti active={isActive('notifications')} /><span className="text-[10px] font-medium">TBáo</span></Link>
       </nav>
+
+      {/* MODAL ĐỔI MẬT KHẨU */}
+      {showPassModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+                <h3 className="text-lg font-bold text-[#003366] mb-4 flex items-center gap-2">
+                    <Icons.Key /> Đổi Mật Khẩu
+                </h3>
+                <form onSubmit={handleChangePassword} className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Mật khẩu cũ</label>
+                        <input type="password" required className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:border-[#003366]" 
+                            value={passForm.oldPass} onChange={e => setPassForm({...passForm, oldPass: e.target.value})}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Mật khẩu mới</label>
+                        <input type="password" required className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:border-[#003366]" 
+                            value={passForm.newPass} onChange={e => setPassForm({...passForm, newPass: e.target.value})}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Xác nhận mật khẩu mới</label>
+                        <input type="password" required className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:border-[#003366]" 
+                            value={passForm.confirmPass} onChange={e => setPassForm({...passForm, confirmPass: e.target.value})}
+                        />
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                        <button type="button" onClick={() => setShowPassModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Hủy</button>
+                        <button type="submit" disabled={loadingPass} className="flex-1 py-3 bg-[#003366] text-white rounded-xl font-bold hover:bg-[#002244] transition-colors shadow-lg shadow-blue-900/10">
+                            {loadingPass ? "Đang xử lý..." : "Lưu thay đổi"}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+      )}
     </div>
   );
 };

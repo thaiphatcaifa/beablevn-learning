@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { db, firebaseConfig } from '../../firebase';
-import { ref, set, onValue, remove, update, get } from "firebase/database";
-import { initializeApp, deleteApp } from "firebase/app";
-import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
+import { db } from '../../firebase';
+import { ref, set, onValue, remove, update, push, get } from "firebase/database";
+import bcrypt from 'bcryptjs';
 
 const StaffManager = () => {
-  const [formData, setFormData] = useState({ name: '', username: '', password: '', subRole: 'teacher', assignedClasses: [] });
+  // CẬP NHẬT: password mặc định là 'BAVNbavn'
+  const [formData, setFormData] = useState({ name: '', username: '', password: 'BAVNbavn', subRole: 'teacher', assignedClasses: [] });
   const [staffList, setStaffList] = useState([]);
   const [availableClasses, setAvailableClasses] = useState([]);
   const [editingStaff, setEditingStaff] = useState(null);
@@ -29,56 +29,46 @@ const StaffManager = () => {
     if (!formData.name || !formData.username || !formData.password) return alert("Thiếu thông tin!");
     
     const loginEmail = `${formData.username.trim()}@beable.vn`;
-    const secondaryApp = initializeApp(firebaseConfig, "StaffApp-" + Date.now());
+
     try {
-      const auth = getAuth(secondaryApp);
-      const cred = await createUserWithEmailAndPassword(auth, loginEmail, formData.password);
-      await set(ref(db, 'users/' + cred.user.uid), { 
-          ...formData, email: loginEmail, loginId: formData.username, role: 'staff', createdAt: new Date().toISOString() 
+      const salt = bcrypt.genSaltSync(10);
+      const hashedPassword = bcrypt.hashSync(formData.password, salt);
+
+      const newUserRef = push(ref(db, 'users'));
+      await set(newUserRef, { 
+          ...formData, 
+          email: loginEmail, 
+          loginId: formData.username, 
+          password: hashedPassword, 
+          role: 'staff', 
+          createdAt: new Date().toISOString() 
       });
-      await signOut(auth);
+
       alert(`Đã tạo nhân sự!\nID: ${formData.username}\nMật khẩu: ${formData.password}`);
-      setFormData({ name: '', username: '', password: '', subRole: 'teacher', assignedClasses: [] });
-    } catch (error) { alert("Lỗi: " + error.message); }
-    finally { deleteApp(secondaryApp); }
+      // Reset form nhưng vẫn giữ pass mặc định cho lần nhập sau
+      setFormData({ name: '', username: '', password: 'BAVNbavn', subRole: 'teacher', assignedClasses: [] });
+    } catch (error) { 
+        alert("Lỗi: " + error.message); 
+    }
   };
 
-  // --- TÍNH NĂNG ĐỔI MẬT KHẨU TRỰC TIẾP ---
   const handleChangePassword = async (staff) => {
-    const newPass = prompt(`Nhập mật khẩu mới cho ${staff.name} (Tối thiểu 6 ký tự):`);
+    const newPass = prompt(`Nhập mật khẩu mới cho ${staff.name} (Tối thiểu 6 ký tự):`, "BAVNbavn");
     if (!newPass) return;
     if (newPass.length < 6) return alert("Mật khẩu quá ngắn!");
 
-    const loginEmail = staff.email || `${staff.loginId}@beable.vn`;
-    const secondaryApp = initializeApp(firebaseConfig, "ResetStaff-" + Date.now());
-
     try {
-      // 1. Sao chép dữ liệu cũ
-      const oldUserRef = ref(db, `users/${staff.id}`);
-      const oldUserSnap = await get(oldUserRef);
-      const oldUserData = oldUserSnap.val();
+      const salt = bcrypt.genSaltSync(10);
+      const hashedPassword = bcrypt.hashSync(newPass, salt);
 
-      // 2. Xóa dữ liệu cũ (để tránh trùng lặp email ảo nếu hệ thống check)
-      await remove(oldUserRef);
-
-      // 3. Tạo Auth mới
-      const auth = getAuth(secondaryApp);
-      const cred = await createUserWithEmailAndPassword(auth, loginEmail, newPass);
-      const newUid = cred.user.uid;
-
-      // 4. Khôi phục dữ liệu sang UID mới
-      await set(ref(db, `users/${newUid}`), { ...oldUserData });
-
-      // 5. Đăng xuất app phụ
-      await signOut(auth);
+      await update(ref(db, `users/${staff.id}`), {
+          password: hashedPassword
+      });
 
       alert(`Thành công! Mật khẩu mới là: ${newPass}`);
     } catch (error) {
         console.error(error);
-        // Nếu lỗi, cố gắng khôi phục lại data cũ (nếu đã lỡ xóa) - ở mức cơ bản thì báo lỗi để Admin xử lý
-        alert(`Lỗi: ${error.message}. (Lưu ý: Nếu lỗi "Email already in use", hãy xóa nhân sự này và tạo lại).`);
-    } finally {
-        deleteApp(secondaryApp);
+        alert(`Lỗi: ${error.message}`);
     }
   };
 
@@ -147,7 +137,6 @@ const StaffManager = () => {
                         <td className="p-4 uppercase text-[10px] font-bold text-slate-400">{s.subRole}</td>
                         <td className="p-4"><div className="flex items-center gap-2"><span className="truncate max-w-[150px] text-xs text-slate-600">{getClassNames(s.assignedClasses)}</span><button onClick={() => setEditingStaff(s)} className="text-[#003366] border border-[#003366] text-[10px] font-bold px-2 py-0.5 rounded hover:bg-[#003366] hover:text-white transition-all">Sửa</button></div></td>
                         <td className="p-4 text-right flex justify-end gap-2">
-                            {/* Nút Đổi Mật Khẩu Trực Tiếp */}
                             <button onClick={() => handleChangePassword(s)} className="text-yellow-600 border border-yellow-600 px-2 py-0.5 rounded text-[10px] font-bold hover:bg-yellow-600 hover:text-white transition-colors" title="Đổi mật khẩu">
                                 Pass
                             </button>

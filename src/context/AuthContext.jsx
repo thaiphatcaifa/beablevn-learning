@@ -1,78 +1,46 @@
-import React, { useContext, useState, useEffect } from "react";
-import { auth, db } from "../firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import { ref, get } from "firebase/database";
+import React, { createContext, useContext, useState, useEffect } from "react";
 
-const AuthContext = React.createContext();
+const AuthContext = createContext(null);
 
 export function useAuth() {
   return useContext(AuthContext);
 }
 
 export function AuthProvider({ children }) {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [userRole, setUserRole] = useState(null);
-  const [userData, setUserData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // 1. Khởi tạo User từ localStorage (để giữ đăng nhập khi F5)
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const savedUser = localStorage.getItem('currentUser');
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch (error) {
+      console.error("Lỗi đọc user từ storage:", error);
+      return null;
+    }
+  });
 
-  useEffect(() => {
-    console.log("--- BẮT ĐẦU THEO DÕI AUTH (PHIÊN BẢN CHỐNG TREO) ---");
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        console.log("✅ 1. Auth OK:", user.email);
-        const userRef = ref(db, `users/${user.uid}`);
-        
-        try {
-          // --- KỸ THUẬT QUAN TRỌNG: TIMEOUT ---
-          // Nếu Database không trả lời sau 3 giây -> Báo lỗi và đi tiếp, KHÔNG ĐƯỢC TREO
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("Hết thời gian chờ Database (3s)")), 3000)
-          );
+  const [loading, setLoading] = useState(false);
 
-          // Chạy đua: Lấy dữ liệu VS Đồng hồ đếm ngược
-          const snapshot = await Promise.race([get(userRef), timeoutPromise]);
+  // 2. Hàm Đăng nhập: Lưu vào State và LocalStorage
+  const login = (userData) => {
+    setCurrentUser(userData);
+    localStorage.setItem('currentUser', JSON.stringify(userData));
+  };
 
-          if (snapshot.exists()) {
-            const data = snapshot.val();
-            console.log("✅ 2. Lấy được Role:", data.role);
-            setUserRole(data.role);
-            setUserData(data);
-          } else {
-            console.warn("⚠️ Không tìm thấy dữ liệu user trong DB.");
-          }
-        } catch (err) {
-          // Bắt lỗi tại đây để App không bị sập (Màn hình trắng)
-          console.error("⚠️ LỖI KẾT NỐI DB (Bỏ qua để vào App):", err.message);
-        }
-        
-        setCurrentUser(user);
-      } else {
-        console.log("zzz Chưa đăng nhập");
-        setCurrentUser(null);
-        setUserRole(null);
-        setUserData(null);
-      }
-      
-      // QUAN TRỌNG: Luôn tắt Loading dù thành công hay thất bại
-      setLoading(false);
-    });
+  // 3. Hàm Đăng xuất: Xóa khỏi State và LocalStorage
+  const logout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('currentUser');
+  };
 
-    return unsubscribe;
-  }, []);
+  // Helper lấy Role nhanh
+  const userRole = currentUser?.role || null;
+  const userData = currentUser;
 
-  const value = { currentUser, userRole, userData, loading };
+  const value = { currentUser, userRole, userData, login, logout, loading };
 
   return (
     <AuthContext.Provider value={value}>
-      {loading ? (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <div className="text-blue-600 font-semibold animate-pulse">
-            Đang khởi động hệ thống...
-          </div>
-        </div>
-      ) : (
-        children
-      )}
+      {children}
     </AuthContext.Provider>
   );
 }

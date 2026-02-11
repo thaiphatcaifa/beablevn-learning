@@ -1,197 +1,262 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
-import { ref, push, onValue } from "firebase/database";
-import { useAuth } from '../../context/AuthContext'; // 1. Import Auth
+import { ref, push, set, onValue, remove } from 'firebase/database';
+import { useAuth } from '../../context/AuthContext';
 
 const Notifications = () => {
-  const { userData } = useAuth(); // 2. Lấy thông tin user hiện tại
+  const { currentUser } = useAuth();
   
-  // State cho nội dung
-  const [mode, setMode] = useState('text'); // 'text' | 'link'
+  // State quản lý form
+  const [postMode, setPostMode] = useState('content'); // 'content' | 'link'
+  const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [linkUrl, setLinkUrl] = useState('');
-  const [label, setLabel] = useState('homework');
-
-  // State cho Phạm vi (Target)
-  const [targetType, setTargetType] = useState('all'); // 'all' | 'class' | 'date'
-  const [selectedTargets, setSelectedTargets] = useState([]); // Mảng lưu ID lớp hoặc Thứ
   
-  // Dữ liệu lớp học
-  const [classes, setClasses] = useState([]);
+  // State cho Hyperlink
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkTitle, setLinkTitle] = useState('Link bài tập'); // Default
 
+  // State cho Nội dung
+  const [selectedLabel, setSelectedLabel] = useState('báo bài'); // 'báo bài', 'quan trọng', 'sự kiện'
+
+  const [scope, setScope] = useState('all'); // 'all' hoặc ID lớp
+  const [classes, setClasses] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [notiList, setNotiList] = useState([]); // Danh sách thông báo đã đăng
+
+  const LINK_TITLES = ["Link điểm danh", "Link sự kiện", "Link bài tập", "Link kiểm tra"];
+  const LABELS = [
+      { id: 'báo bài', color: 'bg-blue-100 text-blue-800 border-blue-200' },
+      { id: 'quan trọng', color: 'bg-red-100 text-red-800 border-red-200' },
+      { id: 'sự kiện', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' }
+  ];
+
+  // 1. Lấy danh sách lớp (đã lọc) và danh sách thông báo
   useEffect(() => {
-    // Lấy danh sách lớp và lọc theo quyền hạn
-    onValue(ref(db, 'classes'), (snapshot) => {
-      const data = snapshot.val();
+    // Lấy Classes
+    onValue(ref(db, 'classes'), (snap) => {
+      const data = snap.val();
       if (data) {
-        const allClasses = Object.entries(data).map(([id, val]) => ({ id, ...val }));
-        
-        // 3. LỌC: Chỉ lấy các lớp có trong assignedClasses của GV
-        const myClassIds = userData?.assignedClasses || [];
-        const myClasses = allClasses.filter(c => myClassIds.includes(c.id));
-        
-        setClasses(myClasses);
-      } else {
-        setClasses([]);
+        const list = Object.entries(data).map(([id, val]) => ({ id, ...val }));
+        const assigned = currentUser.assignedClasses || [];
+        const filtered = currentUser.role === 'admin' ? list : list.filter(c => assigned.includes(c.id));
+        setClasses(filtered);
       }
     });
-  }, [userData]); // Chạy lại khi userData thay đổi
 
-  // Xử lý chọn/bỏ chọn target
-  const toggleTarget = (value) => {
-    setSelectedTargets(prev => 
-      prev.includes(value) ? prev.filter(item => item !== value) : [...prev, value]
-    );
+    // Lấy Notifications
+    onValue(ref(db, 'notifications'), (snap) => {
+        const data = snap.val();
+        if (data) {
+            const list = Object.entries(data)
+                .map(([id, val]) => ({ id, ...val }))
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+            setNotiList(list);
+        } else {
+            setNotiList([]);
+        }
+    });
+  }, [currentUser]);
+
+  const handlePost = async () => {
+    // Validate
+    if (postMode === 'content' && (!title || !content)) return alert("Vui lòng nhập tiêu đề và nội dung.");
+    if (postMode === 'link' && (!linkUrl)) return alert("Vui lòng nhập đường dẫn (URL).");
+
+    setLoading(true);
+    try {
+      const newNotiRef = push(ref(db, 'notifications'));
+      
+      const payload = {
+        date: new Date().toISOString(), // Dùng full ISO để sort
+        scope: scope,
+        author: currentUser.name,
+        type: postMode // 'content' hoặc 'link'
+      };
+
+      if (postMode === 'content') {
+          payload.title = title;
+          payload.content = content;
+          payload.label = selectedLabel;
+      } else {
+          payload.title = linkTitle; // Tiêu đề là loại link
+          payload.content = "Nhấn nút bên dưới để truy cập liên kết."; // Nội dung phụ
+          payload.linkUrl = linkUrl;
+      }
+
+      await set(newNotiRef, payload);
+      
+      alert("Đăng thông báo thành công!");
+      // Reset form
+      setTitle('');
+      setContent('');
+      setLinkUrl('');
+    } catch (error) {
+      alert("Lỗi: " + error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handlePost = () => {
-    // Validate nội dung
-    if (mode === 'text' && !content) return alert("Vui lòng nhập nội dung!");
-    if (mode === 'link' && !linkUrl) return alert("Vui lòng nhập đường dẫn!");
+  const handleDelete = async (id) => {
+      if(window.confirm("Bạn chắc chắn muốn xóa thông báo này?")) {
+          await remove(ref(db, `notifications/${id}`));
+      }
+  }
 
-    // Validate phạm vi
-    if (targetType !== 'all' && selectedTargets.length === 0) {
-      return alert(targetType === 'class' ? "Vui lòng chọn ít nhất 1 lớp!" : "Vui lòng chọn ít nhất 1 ngày!");
-    }
-
-    push(ref(db, 'notifications'), {
-      mode,
-      content: mode === 'text' ? content : linkUrl,
-      label: mode === 'text' ? label : 'link',
-      date: new Date().toLocaleDateString('vi-VN'),
-      author: userData?.name || 'Giáo viên/CCO', // Lấy tên thật của người đăng
-      timestamp: Date.now(),
-      targetType, 
-      targets: targetType === 'all' ? ['all'] : selectedTargets
-    });
-
-    // Reset form
-    setContent('');
-    setLinkUrl('');
-    setSelectedTargets([]);
-    setTargetType('all');
-    alert('Đã đăng thông báo thành công!');
+  // Helper hiển thị tên lớp
+  const getScopeName = (scopeId) => {
+      if(scopeId === 'all') return "Toàn bộ hệ thống";
+      const cls = classes.find(c => c.id === scopeId);
+      return cls ? `Lớp ${cls.name}` : "Lớp đã xóa";
   };
 
   return (
-    <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm">
-      <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-4">
-         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#003366" className="w-6 h-6">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-         </svg>
+    <div className="space-y-8 animate-fade-in-up pb-10">
+      <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
+         <div className="p-2 bg-blue-50 rounded-lg text-[#003366]">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 110-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38c-.551.318-1.26.117-1.527-.461a20.845 20.845 0 01-1.44-4.282m3.102.069a18.03 18.03 0 01-.59-4.59c0-1.586.205-3.124.59-4.59m0 9.18a23.848 23.848 0 018.835 2.535M10.34 6.66a23.847 23.847 0 008.835-2.535m0 0A23.74 23.74 0 0018.795 3m.38 1.125a23.91 23.91 0 011.014 5.795c0 1.94-.254 3.82-.734 5.622m-4.731.213a23.87 23.87 0 005.932 2.535m0 0A23.753 23.753 0 0122.5 6" /></svg>
+         </div>
          <h2 className="text-xl font-bold text-[#003366]">Đăng Thông Báo Mới</h2>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm max-w-3xl">
         
-        {/* CỘT TRÁI: Nội dung & Loại */}
-        <div className="space-y-6">
-          <div>
-            <label className="text-xs font-bold text-slate-400 uppercase block mb-2">1. Loại nội dung:</label>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer p-2 border rounded-lg hover:bg-slate-50 transition-colors w-full justify-center">
-                <input type="radio" name="postMode" className="accent-[#003366]" checked={mode === 'text'} onChange={() => setMode('text')} />
-                <span className="text-sm font-bold text-slate-700">Văn bản & Nhãn</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer p-2 border rounded-lg hover:bg-slate-50 transition-colors w-full justify-center">
-                <input type="radio" name="postMode" className="accent-[#003366]" checked={mode === 'link'} onChange={() => setMode('link')} />
-                <span className="text-sm font-bold text-slate-700">Hyperlink (Web)</span>
-              </label>
-            </div>
-          </div>
-
-          {mode === 'text' ? (
-            <div className="animate-fade-in-up space-y-4">
-              <div>
-                <span className="text-xs font-bold text-slate-400 uppercase block mb-2">Nhãn dán:</span>
-                <div className="flex gap-2 flex-wrap">
-                  <button onClick={() => setLabel('homework')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${label === 'homework' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-600 border-blue-100'}`}>📘 Báo bài</button>
-                  <button onClick={() => setLabel('important')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${label === 'important' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-red-600 border-red-100'}`}>📕 Quan trọng</button>
-                  <button onClick={() => setLabel('event')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${label === 'event' ? 'bg-yellow-500 text-white border-yellow-500' : 'bg-white text-yellow-600 border-yellow-100'}`}>🏆 Sự kiện</button>
-                </div>
-              </div>
-              <textarea 
-                  className="w-full border border-slate-200 p-4 rounded-xl h-40 focus:ring-2 focus:ring-blue-50 focus:border-[#003366] outline-none resize-none text-sm"
-                  placeholder="Nhập nội dung thông báo..."
-                  value={content}
-                  onChange={e => setContent(e.target.value)}
-              />
-            </div>
-          ) : (
-            <div className="animate-fade-in-up">
-               <label className="text-xs font-bold text-slate-400 uppercase block mb-2">Đường dẫn Website:</label>
-               <input 
-                  className="w-full border border-slate-200 p-3 rounded-xl text-sm outline-none focus:border-[#003366] text-[#003366]"
-                  placeholder="https://example.com"
-                  value={linkUrl}
-                  onChange={e => setLinkUrl(e.target.value)}
-               />
-            </div>
-          )}
+        {/* TÙY CHỌN LOẠI ĐĂNG */}
+        <div className="flex gap-4 mb-6">
+            <button 
+                onClick={() => setPostMode('content')}
+                className={`flex-1 py-3 rounded-lg font-bold text-sm transition-all border ${postMode === 'content' ? 'bg-[#003366] text-white border-[#003366]' : 'bg-white text-slate-500 border-slate-200'}`}
+            >
+                📝 Đăng Nội dung
+            </button>
+            <button 
+                onClick={() => setPostMode('link')}
+                className={`flex-1 py-3 rounded-lg font-bold text-sm transition-all border ${postMode === 'link' ? 'bg-[#003366] text-white border-[#003366]' : 'bg-white text-slate-500 border-slate-200'}`}
+            >
+                🔗 Đăng Hyperlink
+            </button>
         </div>
 
-        {/* CỘT PHẢI: Phạm vi hiển thị */}
-        <div className="space-y-4">
-           <label className="text-xs font-bold text-slate-400 uppercase block">2. Phạm vi hiển thị:</label>
-           
-           {/* Tabs chọn loại Target */}
-           <div className="flex bg-slate-100 p-1 rounded-lg">
-              {['all', 'class', 'date'].map(type => (
-                <button 
-                  key={type}
-                  onClick={() => { setTargetType(type); setSelectedTargets([]); }}
-                  className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${targetType === type ? 'bg-white text-[#003366] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  {type === 'all' ? 'Tất cả' : type === 'class' ? 'Theo Lớp' : 'Theo Lịch'}
-                </button>
-              ))}
-           </div>
-
-           {/* Nội dung chọn Target */}
-           <div className="border border-slate-200 rounded-xl p-4 h-64 overflow-y-auto bg-slate-50/50 custom-scrollbar">
-              {targetType === 'all' && (
-                <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 mb-2 opacity-50"><path strokeLinecap="round" strokeLinejoin="round" d="M12.75 19.5v-.75a7.5 7.5 0 00-7.5-7.5H4.5m0-6.75h.75c7.87 0 14.25 6.38 14.25 14.25v.75M6 18.75a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></svg>
-                   <p className="text-sm font-medium">Gửi đến tất cả lớp do bạn phụ trách.</p>
-                </div>
-              )}
-
-              {targetType === 'class' && (
-                <div className="grid grid-cols-1 gap-2 animate-fade-in-up">
-                   {classes.map(cls => (
-                     <label key={cls.id} className={`flex items-center p-3 rounded-lg border cursor-pointer transition-all ${selectedTargets.includes(cls.id) ? 'bg-blue-50 border-[#003366]' : 'bg-white border-slate-200 hover:border-blue-300'}`}>
-                        <input type="checkbox" className="accent-[#003366] w-4 h-4 mr-3" checked={selectedTargets.includes(cls.id)} onChange={() => toggleTarget(cls.id)} />
-                        <div>
-                           <div className="text-sm font-bold text-[#003366]">{cls.name}</div>
-                           <div className="text-xs text-slate-500">{cls.schedule}</div>
-                        </div>
-                     </label>
-                   ))}
-                   {classes.length === 0 && <p className="text-center text-slate-400 py-4 text-sm italic">Bạn chưa được phân công lớp nào.</p>}
-                </div>
-              )}
-
-              {targetType === 'date' && (
-                <div className="grid grid-cols-2 gap-2 animate-fade-in-up">
-                   {['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map(day => (
-                     <label key={day} className={`flex items-center justify-center p-3 rounded-lg border cursor-pointer transition-all ${selectedTargets.includes(day) ? 'bg-blue-50 border-[#003366] text-[#003366] font-bold' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
-                        <input type="checkbox" className="hidden" checked={selectedTargets.includes(day)} onChange={() => toggleTarget(day)} />
-                        {day === 'CN' ? 'Chủ Nhật' : `Thứ ${day.replace('T', '')}`}
-                     </label>
-                   ))}
-                </div>
-              )}
-           </div>
+        {/* PHẠM VI HIỂN THỊ */}
+        <div className="mb-4">
+          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Phạm vi hiển thị</label>
+          <select 
+            className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-[#003366]"
+            value={scope}
+            onChange={(e) => setScope(e.target.value)}
+          >
+            <option value="all">Toàn bộ hệ thống</option>
+            {classes.map(c => <option key={c.id} value={c.id}>Lớp: {c.name}</option>)}
+          </select>
         </div>
+
+        {/* FORM NHẬP LIỆU */}
+        {postMode === 'content' ? (
+            <>
+                <div className="mb-4">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nhãn dán (Label)</label>
+                    <div className="flex gap-2">
+                        {LABELS.map(lbl => (
+                            <button
+                                key={lbl.id}
+                                onClick={() => setSelectedLabel(lbl.id)}
+                                className={`px-3 py-1 rounded text-xs font-bold border transition-all ${selectedLabel === lbl.id ? lbl.color + ' ring-2 ring-offset-1 ring-blue-300' : 'bg-white text-slate-400 border-slate-200'}`}
+                            >
+                                {lbl.id.toUpperCase()}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="mb-4">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tiêu đề</label>
+                    <input 
+                        className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-[#003366]" 
+                        placeholder="VD: Thông báo nghỉ lễ..." 
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                    />
+                </div>
+                <div className="mb-6">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nội dung chi tiết</label>
+                    <textarea 
+                        className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-[#003366] h-32" 
+                        placeholder="Nhập nội dung..." 
+                        value={content}
+                        onChange={(e) => setContent(e.target.value)}
+                    />
+                </div>
+            </>
+        ) : (
+            <>
+                <div className="mb-4">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tiêu đề liên kết</label>
+                    <select 
+                        className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-[#003366] font-bold text-[#003366]"
+                        value={linkTitle}
+                        onChange={(e) => setLinkTitle(e.target.value)}
+                    >
+                        {LINK_TITLES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                </div>
+                <div className="mb-6">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Đường dẫn (URL)</label>
+                    <input 
+                        className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-[#003366] font-mono text-sm text-blue-600" 
+                        placeholder="https://..." 
+                        value={linkUrl}
+                        onChange={(e) => setLinkUrl(e.target.value)}
+                    />
+                </div>
+            </>
+        )}
+
+        <button 
+          onClick={handlePost} 
+          disabled={loading}
+          className="w-full bg-[#003366] text-white py-3 rounded-lg font-bold hover:bg-[#002244] transition-all shadow-lg shadow-blue-900/10"
+        >
+          {loading ? "Đang xử lý..." : "Đăng Thông Báo"}
+        </button>
       </div>
 
-      <div className="flex justify-end mt-6 pt-4 border-t border-slate-100">
-         <button onClick={handlePost} className="bg-[#003366] text-white px-8 py-3 rounded-xl font-bold shadow-md hover:bg-[#002244] hover:shadow-lg transition-all flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
-            Đăng Thông Báo
-         </button>
+      {/* DANH SÁCH THÔNG BÁO ĐÃ TẠO */}
+      <div className="border-t border-slate-200 pt-6">
+          <h3 className="text-lg font-bold text-slate-700 mb-4">Danh sách Thông báo đã tạo</h3>
+          <div className="space-y-3">
+              {notiList.map(noti => (
+                  <div key={noti.id} className="bg-white p-4 rounded-xl border border-slate-200 flex justify-between items-center group hover:border-[#003366] transition-all">
+                      <div>
+                          <div className="flex items-center gap-2 mb-1">
+                              {noti.type === 'link' ? (
+                                  <span className="bg-purple-100 text-purple-700 text-[10px] font-bold px-2 py-0.5 rounded border border-purple-200">LINK</span>
+                              ) : (
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                      LABELS.find(l => l.id === noti.label)?.color || 'bg-gray-100 text-gray-600'
+                                  }`}>
+                                      {noti.label?.toUpperCase()}
+                                  </span>
+                              )}
+                              <span className="text-xs text-slate-400 font-medium">{new Date(noti.date).toLocaleDateString('vi-VN')}</span>
+                              <span className="text-xs text-slate-400">•</span>
+                              <span className="text-xs font-bold text-[#003366]">{getScopeName(noti.scope)}</span>
+                          </div>
+                          <h4 className="font-bold text-slate-800 text-sm">{noti.title}</h4>
+                          <p className="text-xs text-slate-500 truncate max-w-md">{noti.type==='link' ? noti.linkUrl : noti.content}</p>
+                      </div>
+                      <button 
+                          onClick={() => handleDelete(noti.id)}
+                          className="text-red-400 hover:text-red-600 p-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Xóa thông báo"
+                      >
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                      </button>
+                  </div>
+              ))}
+              {notiList.length === 0 && <p className="text-slate-400 text-sm italic text-center">Chưa có thông báo nào.</p>}
+          </div>
       </div>
     </div>
   );
 };
+
 export default Notifications;
